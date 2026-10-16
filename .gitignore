@@ -1,0 +1,40 @@
+# Môi trường và bí mật
+.env
+*.pem
+*.key
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Java / Spring Boot
+target/
+build/
+*.class
+*.jar
+.gradle/
+
+# C# / ASP.NET Core
+bin/
+obj/
+*.user
+.vs/
+
+# Node / NestJS / Frontend
+node_modules/
+dist/
+coverage/
+.next/
+
+# Python / FastAPI
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Docker data
+pgdata/
