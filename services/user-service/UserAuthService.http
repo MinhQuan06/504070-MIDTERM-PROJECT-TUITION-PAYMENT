@@ -1,0 +1,29 @@
+@baseUrl = http://127.0.0.1:8001
+@internalApiKey = REPLACE_WITH_THE_VALUE_FROM_YOUR_LOCAL_ENV
+
+### Health
+GET {{baseUrl}}/health
+
+### Login as student (form fields; update demo password if it differs locally)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=demo&password=Demo123!
+
+### Login as admin
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=admin&password=AdminDemo123!
+
+### Authenticated profile (paste access_token from the response)
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer PASTE_ACCESS_TOKEN_HERE
+
+### Admin endpoint: should return 403 when using a student token
+GET {{baseUrl}}/api/v1/admin/users
+Authorization: Bearer PASTE_ACCESS_TOKEN_HERE
+
+### Internal endpoint: never expose this route through the public API Gateway
+GET {{baseUrl}}/internal/users/1
+X-Internal-API-Key: {{internalApiKey}}
