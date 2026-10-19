@@ -1,6 +1,6 @@
 # Phân hệ Đóng học phí (iBanking) - CS504070
 
-Dự án giữa kỳ môn CS504070 (HK1/2026-2027), Đại học Tôn Đức Thắng.
+Dự án giữa kỳ môn 504070 (HK1/2026-2027), Đại học Tôn Đức Thắng.
 Người dùng dùng số dư tài khoản để thanh toán toàn bộ học phí của một sinh viên TDTU (cho mình hoặc cho sinh viên khác), xác thực bằng OTP qua email.
 
 ## Thành viên
@@ -13,21 +13,21 @@ Người dùng dùng số dư tài khoản để thanh toán toàn bộ học ph
 
 | Thành phần | Công nghệ | Thư mục | Trách nhiệm |
 | --- | --- | --- | --- |
-| API Gateway | Nginx | `gateway/` | Điểm vào duy nhất, routing (kiểm tra JWT: chốt cách làm sau) |
+| API Gateway | Nginx | `gateway/` | Điểm vào duy nhất, routing,... |
 | User/Auth Service | Python + FastAPI | `services/user-service/` | Đăng nhập, JWT, thông tin người dùng |
-| Payment Service | Java + Spring Boot | `services/payment-service/` | Số dư, giao dịch, OTP, lịch sử, điều phối (concurrency) |
+| Payment Service | Java + Spring Boot | `services/payment-service/` | Số dư, giao dịch, OTP, lịch sử, điều phối  |
 | Student Service | C# + ASP.NET Core | `services/student-service/` | Sinh viên, học phí, đánh dấu đã thanh toán |
 | Notification Service | TypeScript + NestJS | `services/notification-service/` | Gửi email OTP và email xác nhận (nhận sự kiện từ RabbitMQ) |
-| Web App | (chưa chốt) | `frontend/` | Giao diện người dùng |
+| Web App | ... | `frontend/` | Giao diện người dùng |
 
-Mỗi service có database PostgreSQL riêng (User DB, Payment DB, Student DB). Chi tiết ở `docs/`.
+Mỗi service có database  riêng (User DB, Payment DB, Student DB). Chi tiết ở `docs/`.
 
 ## Cấu trúc thư mục
 
 ```
 tuition-payment/
 ├── README.md
-├── docker-compose.yml        # hạ tầng: 3 PostgreSQL, RabbitMQ, Mailpit, Gateway
+├── docker-compose.yml        # hạ tầng: 3 database, RabbitMQ, Mailpit, Gateway
 ├── .env.example              # mẫu biến môi trường (copy thành .env)
 ├── gateway/                  # cấu hình Nginx
 ├── services/
@@ -54,7 +54,7 @@ docker compose up -d
 - Mailpit (xem email OTP khi dev): http://localhost:8025
 - Gateway: http://localhost:8080
 
-Khi mỗi service có Dockerfile, bỏ comment khối service tương ứng trong `docker-compose.yml`.
+Payment và Notification đã tích hợp trong Compose. Payment dùng MySQL và cổng 8082; Gateway dùng 8080. User/Student hiện chưa có triển khai.
 
 ## Quy trình làm việc nhóm
 
@@ -63,3 +63,22 @@ Khi mỗi service có Dockerfile, bỏ comment khối service tương ứng tron
 - Gộp vào `main` bằng Pull Request, có ít nhất 1 bạn trong nhóm review.
 - Commit ngắn gọn, bắt đầu bằng động từ: `add login endpoint`, `fix balance check`.
 - Không commit file `.env`, mật khẩu hay khóa bí mật.
+
+
+Payment dùng Transactional Outbox để phục hồi sự kiện email khi broker gián đoạn. Trước lần chạy đầu, tạo khóa bằng `node services/payment-service/scripts/init-outbox-key.mjs`; không commit .env hoặc đổi khóa tùy tiện. Xem [thiết kế và kiểm thử Outbox](docs/report/payment-outbox.md).
+
+## Demo Payment - Notification
+
+User/Student chưa có triển khai nên bật mock cho demo local (không dùng cho môi trường thật):
+
+```powershell
+# Chạy tại thư mục gốc; chỉ copy .env nếu chưa có.
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+node services/payment-service/scripts/init-outbox-key.mjs
+$env:PAYMENT_MOCK_ENABLED = 'true'
+docker compose up -d --build payment-service notification-service gateway
+node services/payment-service/scripts/smoke-payment-notification.mjs
+Remove-Item Env:PAYMENT_MOCK_ENABLED
+```
+
+Container giữ cấu hình mock của lần khởi động này; lần chạy Compose tiếp theo dùng giá trị mặc định false nếu .env không bật mock. Smoke test tạo tài khoản demo mới, đọc OTP từ Mailpit và kiểm tra biên nhận, số dư, resend và hoàn tiền mock. Xem README của từng service để biết giới hạn hiện tại.

@@ -13,12 +13,17 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.UUID;
 import java.util.HexFormat;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OtpService {
+
+    public record IssuedOtp(String eventId, String code, Instant expiresAt) {}
 
     private static final int OTP_EXPIRY_MINUTES = 5;
     private final OtpRepository otpRepository;
@@ -32,7 +37,7 @@ public class OtpService {
      * 4. Trả về mã OTP gốc (plain text) để gửi qua RabbitMQ cho Notification Service.
      */
     @Transactional
-    public String generateAndSaveOtp(Long transactionId) {
+    public IssuedOtp generateAndSaveOtp(Long transactionId) {
         LocalDateTime now = LocalDateTime.now();
 
         // 1. Vô hiệu hóa các OTP cũ còn hiệu lực của giao dịch này
@@ -57,13 +62,9 @@ public class OtpService {
 
         otpRepository.save(otp);
 
-        // Ghi log mã OTP ra Console để dễ dàng copy test khi chưa bật Notification Service
-        log.info("==================================================================");
-        log.info("[OTP GENERATED] Transaction ID: {} | Mã OTP: {} (Hết hạn sau {} phút)",
-                transactionId, rawOtp, OTP_EXPIRY_MINUTES);
-        log.info("==================================================================");
-
-        return rawOtp;
+        log.info("OTP issued for transactionId={}", transactionId);
+        return new IssuedOtp(UUID.randomUUID().toString(), rawOtp,
+                otp.getExpiresAt().atZone(ZoneId.systemDefault()).toInstant());
     }
 
     /**

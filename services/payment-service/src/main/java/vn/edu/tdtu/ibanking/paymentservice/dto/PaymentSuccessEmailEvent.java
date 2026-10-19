@@ -4,21 +4,19 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class PaymentSuccessEmailEvent {
-    private String eventType;       // "PAYMENT_SUCCESS"
-    private Long transactionId;
-    private String recipientEmail;
-    private String payerFullName;
+    private String eventId;
+    private String type;
+    private String transactionId;
+    private String email;
+    private String fullName;
     private String studentId;
-    private Long tuitionId;
     private Long amount;
-    private Long remainingBalance;
-    private LocalDateTime completedAt;
+    private Instant completedAt;
 }

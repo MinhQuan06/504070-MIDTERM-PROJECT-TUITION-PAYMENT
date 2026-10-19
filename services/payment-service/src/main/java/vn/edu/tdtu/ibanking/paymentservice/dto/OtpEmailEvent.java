@@ -4,21 +4,18 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class OtpEmailEvent {
-    private String eventType;       // "OTP_GENERATED"
-    private Long transactionId;
-    private String recipientEmail;
-    private String payerFullName;
-    private String studentId;
-    private Long amount;
-    private String otpCode;
-    private int expiryMinutes;
-    private LocalDateTime timestamp;
+    private String eventId;
+    private String type;
+    private String transactionId;
+    private String email;
+    private String fullName;
+    private String otp;
+    private Instant expiresAt;
 }
