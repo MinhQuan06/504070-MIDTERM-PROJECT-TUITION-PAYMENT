@@ -26,6 +26,7 @@ public class TransactionService {
     private final AccountService accountService;
     private final OtpService otpService;
     private final NotificationProducer notificationProducer;
+    private final PaymentCompletionService paymentCompletionService;
     private final UserServiceClient userServiceClient;
     private final StudentServiceClient studentServiceClient;
 
@@ -68,23 +69,21 @@ public class TransactionService {
         tx = transactionRepository.save(tx);
 
         // 1. Sinh OTP 6 chữ số
-        String rawOtp = otpService.generateAndSaveOtp(tx.getTransactionId());
+        OtpService.IssuedOtp issuedOtp = otpService.generateAndSaveOtp(tx.getTransactionId());
 
         // 2. Bắn sự kiện gửi email OTP qua RabbitMQ
         notificationProducer.sendOtpEmailEvent(OtpEmailEvent.builder()
-                .eventType("OTP_GENERATED")
-                .transactionId(tx.getTransactionId())
-                .recipientEmail(payer.getEmail())
-                .payerFullName(payer.getFullName())
-                .studentId(tx.getStudentId())
-                .amount(tx.getAmount())
-                .otpCode(rawOtp)
-                .expiryMinutes(5)
-                .timestamp(LocalDateTime.now())
+                .eventId(issuedOtp.eventId())
+                .type("OtpRequested")
+                .transactionId(tx.getTransactionId().toString())
+                .email(payer.getEmail())
+                .fullName(payer.getFullName())
+                .otp(issuedOtp.code())
+                .expiresAt(issuedOtp.expiresAt())
                 .build());
 
         return mapToResponse(tx, payer.getEmail(),
-                "Giao dịch đã được khởi tạo. Mã OTP đã được gửi tới email " + payer.getEmail() + " (hiệu lực 5 phút).");
+                "Giao dịch đã được khởi tạo. Yêu cầu gửi OTP đã được ghi nhận cho email " + payer.getEmail() + " (hiệu lực 5 phút).");
     }
 
     /**
@@ -102,23 +101,21 @@ public class TransactionService {
         UserDto payer = userServiceClient.getUserById(tx.getPayerUserId());
 
         // 1. Vô hiệu hóa OTP cũ và sinh OTP mới
-        String rawOtp = otpService.generateAndSaveOtp(tx.getTransactionId());
+        OtpService.IssuedOtp issuedOtp = otpService.generateAndSaveOtp(tx.getTransactionId());
 
         // 2. Bắn sự kiện gửi lại email OTP qua RabbitMQ
         notificationProducer.sendOtpEmailEvent(OtpEmailEvent.builder()
-                .eventType("OTP_GENERATED")
-                .transactionId(tx.getTransactionId())
-                .recipientEmail(payer.getEmail())
-                .payerFullName(payer.getFullName())
-                .studentId(tx.getStudentId())
-                .amount(tx.getAmount())
-                .otpCode(rawOtp)
-                .expiryMinutes(5)
-                .timestamp(LocalDateTime.now())
+                .eventId(issuedOtp.eventId())
+                .type("OtpRequested")
+                .transactionId(tx.getTransactionId().toString())
+                .email(payer.getEmail())
+                .fullName(payer.getFullName())
+                .otp(issuedOtp.code())
+                .expiresAt(issuedOtp.expiresAt())
                 .build());
 
         return mapToResponse(tx, payer.getEmail(),
-                "Đã cấp lại mã OTP mới và gửi tới email " + payer.getEmail() + " (hiệu lực 5 phút).");
+                "Đã cấp lại OTP và ghi nhận yêu cầu gửi tới email " + payer.getEmail() + " (hiệu lực 5 phút).");
     }
 
     /**
@@ -154,6 +151,9 @@ public class TransactionService {
             throw new BusinessException("Giao dịch này đã thất bại và kết thúc trước đó.");
         }
 
+        // Resolve receipt recipient before any debit or remote mutation.
+        UserDto payer = userServiceClient.getUserById(tx.getPayerUserId());
+
         // Bước Saga 1: Trừ tiền cục bộ tại Payment DB
         AccountResponse updatedAccount;
         try {
@@ -182,24 +182,8 @@ public class TransactionService {
             throw new BusinessException("Khoản học phí vừa được thanh toán bởi người khác. Hệ thống đã hoàn lại tiền vào tài khoản của bạn.");
         }
 
-        // Bước Saga 4: Thành công hoàn toàn -> Lưu trạng thái SUCCESS
-        tx.setStatus(TransactionStatus.SUCCESS);
-        tx.setCompletedAt(LocalDateTime.now());
-        tx = transactionRepository.save(tx);
-
-        // Bước Saga 5: Bắn sự kiện gửi Email xác nhận biên lai qua RabbitMQ
-        UserDto payer = userServiceClient.getUserById(tx.getPayerUserId());
-        notificationProducer.sendPaymentSuccessEmailEvent(PaymentSuccessEmailEvent.builder()
-                .eventType("PAYMENT_SUCCESS")
-                .transactionId(tx.getTransactionId())
-                .recipientEmail(payer.getEmail())
-                .payerFullName(payer.getFullName())
-                .studentId(tx.getStudentId())
-                .tuitionId(tx.getTuitionId())
-                .amount(tx.getAmount())
-                .remainingBalance(updatedAccount.getBalance())
-                .completedAt(tx.getCompletedAt())
-                .build());
+        // SUCCESS and its email event commit atomically in a separate proxied local transaction.
+        tx = paymentCompletionService.complete(tx.getTransactionId(), payer);
 
         log.info("Saga Hoàn tất: Giao dịch txId={} thành công (SUCCESS)!", tx.getTransactionId());
         return mapToResponse(tx, payer.getEmail(), "Xác thực OTP và thanh toán học phí thành công!");
