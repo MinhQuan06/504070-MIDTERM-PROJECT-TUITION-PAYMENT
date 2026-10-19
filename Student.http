@@ -1,0 +1,105 @@
+@Student_HostAddress = http://localhost:5071
+
+### 1. Kiểm tra kết nối CSDL MySQL
+GET {{Student_HostAddress}}/api/database/test
+Accept: application/json
+
+###
+
+### 2. Lấy danh sách tất cả sinh viên
+GET {{Student_HostAddress}}/api/student
+Accept: application/json
+
+###
+
+### 3. Thêm mới sinh viên SV001
+POST {{Student_HostAddress}}/api/student
+Content-Type: application/json
+
+{
+  "student_ID": "SV001",
+  "full_Name": "Nguyen Van A"
+}
+
+###
+
+### 4. Lấy thông tin sinh viên SV001
+GET {{Student_HostAddress}}/api/student/SV001
+Accept: application/json
+
+###
+
+### 5. Cập nhật tên sinh viên SV001
+PUT {{Student_HostAddress}}/api/student/SV001
+Content-Type: application/json
+
+{
+  "full_Name": "Nguyen Van A (Cap nhat)"
+}
+
+###
+
+### 6. Tạo học phí cho SV001
+POST {{Student_HostAddress}}/api/tuition
+Content-Type: application/json
+
+{
+  "student_ID": "SV001",
+  "semester": "HK1_2026",
+  "amount": 5000000
+}
+
+###
+
+### 7. Lấy danh sách tất cả học phí
+GET {{Student_HostAddress}}/api/tuition
+Accept: application/json
+
+###
+
+### 8. Lấy học phí theo ID (ví dụ ID: 1)
+GET {{Student_HostAddress}}/api/tuition/1
+Accept: application/json
+
+###
+
+### 9. Lấy danh sách học phí của sinh viên SV001
+GET {{Student_HostAddress}}/api/tuition/student/SV001
+Accept: application/json
+
+###
+
+### 10. Cập nhật thông tin học phí (khi chưa thanh toán)
+PUT {{Student_HostAddress}}/api/tuition/1
+Content-Type: application/json
+
+{
+  "student_ID": "SV001",
+  "semester": "HK1_2026",
+  "amount": 5500000
+}
+
+###
+
+### 11. Thanh toán học phí (ID: 1)
+POST {{Student_HostAddress}}/api/tuition/1/pay
+Content-Type: application/json
+
+{
+  "transaction_ID": 987654321
+}
+
+###
+
+### 12. Thử xóa sinh viên SV001 (Kỳ vọng trả về 409 Conflict vì đã có học phí)
+DELETE {{Student_HostAddress}}/api/student/SV001
+
+###
+
+### 13. Xóa học phí (ID: 1)
+DELETE {{Student_HostAddress}}/api/tuition/1
+
+###
+
+### 14. Xóa sinh viên SV001 (Thành công vì học phí đã được xóa)
+DELETE {{Student_HostAddress}}/api/student/SV001
