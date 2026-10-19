@@ -33,16 +33,4 @@ public class TuitionDto {
     @JsonAlias({"paidByTransactionId", "paid_by_transaction_id"})
     private Long paidByTransactionId;
 
-    // Bổ sung các hàm Setter trùng tên JSON của C# để tương thích tuyệt đối với cả Jackson 2 & Jackson 3
-    public void setTuition_ID(Long tuition_ID) {
-        this.tuitionId = tuition_ID;
-    }
-
-    public void setStudent_ID(String student_ID) {
-        this.studentId = student_ID;
-    }
-
-    public void setPaid_By_Transaction_ID(Long paid_By_Transaction_ID) {
-        this.paidByTransactionId = paid_By_Transaction_ID;
-    }
 }

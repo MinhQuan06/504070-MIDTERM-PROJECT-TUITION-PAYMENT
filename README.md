@@ -54,7 +54,7 @@ docker compose up -d
 - Mailpit (xem email OTP khi dev): http://localhost:8025
 - Gateway: http://localhost:8080
 
-Payment và Notification đã tích hợp trong Compose. Payment dùng MySQL và cổng 8082; Gateway dùng 8080. User/Student hiện chưa có triển khai.
+Payment và Notification đã tích hợp trong Compose. Payment dùng MySQL và cổng 8082; Gateway dùng 8080. Student đã có triển khai MySQL/.NET, cổng 5071; User hiện chưa có triển khai.
 
 ## Quy trình làm việc nhóm
 

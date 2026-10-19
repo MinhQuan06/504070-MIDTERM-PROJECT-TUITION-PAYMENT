@@ -12,13 +12,17 @@ node services/payment-service/scripts/init-outbox-key.mjs
 docker compose up -d --build payment-service notification-service gateway
 ```
 
-Mặc định cần User/Student thật. Khi demo local với mock:
+Cấu hình hiện tại: `PAYMENT_USER_MOCK_ENABLED=true`, `PAYMENT_STUDENT_MOCK_ENABLED=false` trong `.env` gốc. Chạy `node services/payment-service/scripts/smoke-payment-student.mjs` tại gốc để kiểm tra Student thật đến email biên nhận. Script tạo dữ liệu demo riêng và giữ lại để xem.
+
+Để chạy bài test cũ với cả hai mock, cần ghi đè cả hai cờ:
 
 ```powershell
-$env:PAYMENT_MOCK_ENABLED = 'true'
+$env:PAYMENT_USER_MOCK_ENABLED = 'true'
+$env:PAYMENT_STUDENT_MOCK_ENABLED = 'true'
 docker compose up -d --build payment-service notification-service gateway
 node services/payment-service/scripts/smoke-payment-notification.mjs
-Remove-Item Env:PAYMENT_MOCK_ENABLED
+Remove-Item Env:PAYMENT_USER_MOCK_ENABLED
+Remove-Item Env:PAYMENT_STUDENT_MOCK_ENABLED
 ```
 
 Mock chỉ phục vụ thử nghiệm: tuitionId 999 là đã đóng, 888 xung đột khi ghi PAID. Các ID khác dùng studentId/amount từ request, không chứng minh dữ liệu học phí hoặc concurrency của Student thật.
@@ -41,7 +45,6 @@ Cần JDK 21+ và JAVA_HOME đúng. Bật payment-db/rabbitmq/mailpit bằng Com
 - SPRING_DATASOURCE_USERNAME/PASSWORD: khớp .env gốc.
 - SPRING_RABBITMQ_HOST/PORT/USERNAME/PASSWORD: localhost:5672 và credential .env.
 - OUTBOX_ENCRYPTION_KEY: khóa đã tạo trong .env.
-- MOCK_ENABLED=true nếu thử bằng mock.
+- USER_MOCK_ENABLED=true và STUDENT_MOCK_ENABLED=false để ghép Student thật khi chạy Java trực tiếp.
 
 Trong thư mục service chạy `./mvnw.cmd spring-boot:run`. Gọi trực tiếp http://localhost:8082; Gateway Docker vẫn trỏ container payment-service, không trỏ Java trên Windows.
-.
