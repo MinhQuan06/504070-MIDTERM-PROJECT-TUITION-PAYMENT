@@ -31,16 +31,23 @@ services:
       start_period: 20s
 
   student-db:
-    image: postgres:16
+    image: mysql:8.0
     environment:
-      POSTGRES_DB: ${STUDENT_DB_NAME}
-      POSTGRES_USER: ${STUDENT_DB_USER}
-      POSTGRES_PASSWORD: ${STUDENT_DB_PASSWORD}
+      MYSQL_DATABASE: ${STUDENT_DB_NAME:-student_db}
+      MYSQL_USER: ${STUDENT_DB_USER:-student_svc}
+      MYSQL_PASSWORD: ${STUDENT_DB_PASSWORD:-change_me_student}
+      MYSQL_ROOT_PASSWORD: ${STUDENT_DB_ROOT_PASSWORD:-change_me_student_root}
     volumes:
-      - student-db-data:/var/lib/postgresql/data
-      - ./db/student:/docker-entrypoint-initdb.d:ro
+      - student-mysql-data:/var/lib/mysql
+      - ./services/student-service/db/student_db.sql:/docker-entrypoint-initdb.d/student.sql:ro
     ports:
-      - "5435:5432"
+      - "127.0.0.1:${STUDENT_DB_PORT:-3308}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u$$MYSQL_USER $$MYSQL_DATABASE -e 'SELECT 1 FROM tuitions LIMIT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -74,6 +81,8 @@ services:
     depends_on:
       payment-service:
         condition: service_healthy
+      student-service:
+        condition: service_started
 
   # ---- Bỏ comment từng khối khi service đã có Dockerfile ----
   # user-service:
@@ -100,8 +109,10 @@ services:
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-notification}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-notification_dev}
       MOCK_ENABLED: ${PAYMENT_MOCK_ENABLED:-false}
+      USER_MOCK_ENABLED: ${PAYMENT_USER_MOCK_ENABLED:-${PAYMENT_MOCK_ENABLED:-false}}
+      STUDENT_MOCK_ENABLED: ${PAYMENT_STUDENT_MOCK_ENABLED:-${PAYMENT_MOCK_ENABLED:-false}}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:8001}
-      STUDENT_SERVICE_URL: ${STUDENT_SERVICE_URL:-http://student-service:8003}
+      STUDENT_SERVICE_URL: ${STUDENT_SERVICE_URL:-http://student-service:5071}
     ports:
       - "127.0.0.1:8082:8082"
     depends_on:
@@ -116,11 +127,19 @@ services:
       retries: 12
       start_period: 30s
 
-  # student-service:
-  #   build: ./services/student-service
-  #   env_file: .env
-  #   depends_on: [student-db]
-  #
+  student-service:
+    build: ./services/student-service
+    init: true
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_URLS: http://+:5071
+      ConnectionStrings__student_db: Server=student-db;Port=3306;Database=${STUDENT_DB_NAME:-student_db};User ID=${STUDENT_DB_USER:-student_svc};Password=${STUDENT_DB_PASSWORD:-change_me_student};
+    ports:
+      - "127.0.0.1:5071:5071"
+    depends_on:
+      student-db:
+        condition: service_healthy
+
   notification-service:
     build: ./services/notification-service
     init: true
@@ -151,7 +170,8 @@ services:
 volumes:
   user-db-data:
   payment-mysql-data:
-  student-db-data:
+  student-db-data: # Legacy PostgreSQL volume, not mounted into MySQL.
+  student-mysql-data:
 
   rabbitmq-data:
   notification-data:

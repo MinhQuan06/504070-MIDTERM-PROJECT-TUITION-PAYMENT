@@ -17,7 +17,7 @@ public class UserServiceClient {
     public UserServiceClient(
             RestClient.Builder builder,
             @Value("${app.external-services.user-service-url}") String baseUrl,
-            @Value("${app.external-services.mock-enabled:true}") boolean mockEnabled) {
+            @Value("${app.external-services.user-mock-enabled:false}") boolean mockEnabled) {
         this.restClient = builder.baseUrl(baseUrl).build();
         this.mockEnabled = mockEnabled;
     }

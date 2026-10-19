@@ -20,7 +20,7 @@ public class StudentServiceClient {
     public StudentServiceClient(
             RestClient.Builder builder,
             @Value("${app.external-services.student-service-url:http://localhost:5071}") String baseUrl,
-            @Value("${app.external-services.mock-enabled:false}") boolean mockEnabled) {
+            @Value("${app.external-services.student-mock-enabled:false}") boolean mockEnabled) {
         this.restClient = builder.baseUrl(baseUrl).build();
         this.mockEnabled = mockEnabled;
     }

@@ -54,7 +54,7 @@ docker compose up -d
 - Mailpit (xem email OTP khi dev): http://localhost:8025
 - Gateway: http://localhost:8080
 
-Payment và Notification đã tích hợp trong Compose. Payment dùng MySQL và cổng 8082; Gateway dùng 8080. User/Student hiện chưa có triển khai.
+Payment và Notification đã tích hợp trong Compose. Payment dùng MySQL và cổng 8082; Gateway dùng 8080. Student đã có triển khai MySQL/.NET, cổng 5071; User hiện chưa có triển khai.
 
 ## Quy trình làm việc nhóm
 
@@ -66,19 +66,3 @@ Payment và Notification đã tích hợp trong Compose. Payment dùng MySQL và
 
 
 Payment dùng Transactional Outbox để phục hồi sự kiện email khi broker gián đoạn. Trước lần chạy đầu, tạo khóa bằng `node services/payment-service/scripts/init-outbox-key.mjs`; không commit .env hoặc đổi khóa tùy tiện. Xem [thiết kế và kiểm thử Outbox](docs/report/payment-outbox.md).
-
-## Demo Payment - Notification
-
-User/Student chưa có triển khai nên bật mock cho demo local (không dùng cho môi trường thật):
-
-```powershell
-# Chạy tại thư mục gốc; chỉ copy .env nếu chưa có.
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-node services/payment-service/scripts/init-outbox-key.mjs
-$env:PAYMENT_MOCK_ENABLED = 'true'
-docker compose up -d --build payment-service notification-service gateway
-node services/payment-service/scripts/smoke-payment-notification.mjs
-Remove-Item Env:PAYMENT_MOCK_ENABLED
-```
-
-Container giữ cấu hình mock của lần khởi động này; lần chạy Compose tiếp theo dùng giá trị mặc định false nếu .env không bật mock. Smoke test tạo tài khoản demo mới, đọc OTP từ Mailpit và kiểm tra biên nhận, số dư, resend và hoàn tiền mock. Xem README của từng service để biết giới hạn hiện tại.

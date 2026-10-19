@@ -12,13 +12,17 @@ node services/payment-service/scripts/init-outbox-key.mjs
 docker compose up -d --build payment-service notification-service gateway
 ```
 
-Mặc định cần User/Student thật. Khi demo local với mock:
+Cấu hình hiện tại: `PAYMENT_USER_MOCK_ENABLED=true`, `PAYMENT_STUDENT_MOCK_ENABLED=false` trong `.env` gốc. Chạy `node services/payment-service/scripts/smoke-payment-student.mjs` tại gốc để kiểm tra Student thật đến email biên nhận. Script tạo dữ liệu demo riêng và giữ lại để xem.
+
+Để chạy bài test cũ với cả hai mock, cần ghi đè cả hai cờ:
 
 ```powershell
-$env:PAYMENT_MOCK_ENABLED = 'true'
+$env:PAYMENT_USER_MOCK_ENABLED = 'true'
+$env:PAYMENT_STUDENT_MOCK_ENABLED = 'true'
 docker compose up -d --build payment-service notification-service gateway
 node services/payment-service/scripts/smoke-payment-notification.mjs
-Remove-Item Env:PAYMENT_MOCK_ENABLED
+Remove-Item Env:PAYMENT_USER_MOCK_ENABLED
+Remove-Item Env:PAYMENT_STUDENT_MOCK_ENABLED
 ```
 
 Mock chỉ phục vụ thử nghiệm: tuitionId 999 là đã đóng, 888 xung đột khi ghi PAID. Các ID khác dùng studentId/amount từ request, không chứng minh dữ liệu học phí hoặc concurrency của Student thật.
@@ -55,33 +59,6 @@ Cần JDK 21+ và JAVA_HOME đúng. Bật payment-db/rabbitmq/mailpit bằng Com
 - SPRING_DATASOURCE_USERNAME/PASSWORD: khớp .env gốc.
 - SPRING_RABBITMQ_HOST/PORT/USERNAME/PASSWORD: localhost:5672 và credential .env.
 - OUTBOX_ENCRYPTION_KEY: khóa đã tạo trong .env.
-- MOCK_ENABLED=true nếu thử bằng mock.
+- USER_MOCK_ENABLED=true và STUDENT_MOCK_ENABLED=false để ghép Student thật khi chạy Java trực tiếp.
 
 Trong thư mục service chạy `./mvnw.cmd spring-boot:run`. Gọi trực tiếp http://localhost:8082; Gateway Docker vẫn trỏ container payment-service, không trỏ Java trên Windows.
-
-## Sự kiện và Outbox
-
-Exchange `ibanking.events`, queue `notification.email`, routing keys `OtpRequested` / `PaymentSucceeded`; JSON theo README Notification. ID giao dịch là chuỗi, mốc thời gian dùng ISO 8601 UTC. Mỗi OTP có eventId mới; biên nhận dùng `payment-succeeded-{transactionId}`. Không reset Payment DB độc lập với dấu dedupe nếu tái sử dụng ID trong demo.
-
-Sự kiện OTP ghi cùng transaction tạo/cấp lại OTP; SUCCESS và receipt ghi cùng transaction cục bộ qua PaymentCompletionService. Publisher nền retry khi broker lỗi và chỉ đánh dấu PUBLISHED sau ACK không có mandatory return. Payload mã hóa AES-GCM, xóa khi PUBLISHED/EXPIRED. Khóa trong .env không commit; giữ nguyên qua restart và backup. Script init không ghi đè khóa đã có hoặc in khóa ra console.
-
-Chi tiết: [Transactional Outbox](../../docs/report/payment-outbox.md).
-
-## Kiểm thử
-
-```powershell
-# Trong thư mục Payment; contract/sender unit test không cần DB.
-./mvnw.cmd '-Dtest=NotificationContractTest,OutboxSenderTest' test
-# contextLoads cần cấu hình MySQL phù hợp.
-./mvnw.cmd test
-```
-
-OutboxIntegrationTest là test MySQL có fixture, mặc định tắt. Chỉ bật OUTBOX_TEST_DATABASE=true với database riêng tên payment_outbox_test; không chạy trên dữ liệu nghiệp vụ. Test xác nhận tên database trước khi xóa fixture. Tắt publisher khác đang dùng cùng DB test. Xem tài liệu Outbox để cấu hình.
-
-## Giới hạn
-
-- Chưa có JWT/quyền sở hữu hoặc kiểm soát seed API.
-- Saga debit/Student chưa có worker phục hồi; timeout Student vẫn có thể bị xử lý như từ chối.
-- Sinh/resend OTP chưa bảo đảm uniqueness khi chạy đồng thời.
-- Outbox bảo đảm at-least-once DB -> broker, không bảo đảm SMTP exactly-once.
-- Cần theo dõi PENDING lâu, bảo vệ khóa mã hóa và thống nhất lưu giữ metadata Outbox.
