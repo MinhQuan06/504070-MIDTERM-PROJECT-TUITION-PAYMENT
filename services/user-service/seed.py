@@ -7,8 +7,8 @@ from app.models.user import User
 
 DEMO_ACCOUNTS = [
     {
-        "username": "demo",
-        "password": "Demo123",
+        "username": "student",
+        "password": "Admin123",
         "full_name": "Demo Student",
         "phone": "0900000000",
         "email": "demo@example.com",
@@ -16,7 +16,7 @@ DEMO_ACCOUNTS = [
     },
     {
         "username": "admin",
-        "password": "AdminDemo123",
+        "password": "Admin123",
         "full_name": "Demo Administrator",
         "phone": "0900000001",
         "email": "admin@example.com",

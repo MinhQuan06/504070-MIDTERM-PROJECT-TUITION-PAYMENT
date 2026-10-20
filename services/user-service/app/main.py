@@ -13,7 +13,7 @@ from app.models import User  # noqa: F401 - registers the SQLAlchemy model with 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Disabled by default. Prefer applying db/user_db.sql or an explicit migration.
+    # Disabled by default. Create the schema by importing db/user_db.sql before startup.
     if settings.AUTO_CREATE_TABLES:
         Base.metadata.create_all(bind=engine)
     yield

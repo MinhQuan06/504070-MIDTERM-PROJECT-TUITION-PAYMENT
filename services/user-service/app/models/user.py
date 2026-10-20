@@ -16,7 +16,7 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(15), nullable=True)
     email: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    # RBAC and brute-force protection fields. Existing databases need migration 001.
+    # RBAC and brute-force protection fields included in the current users schema.
     role: Mapped[str] = mapped_column(String(30), nullable=False, default="student", server_default="student")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("1"))
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
