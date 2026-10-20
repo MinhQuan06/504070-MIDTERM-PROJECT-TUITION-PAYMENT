@@ -1,23 +1,3 @@
-# Tích hợp với project chính
-
-Ưu tiên Docker Compose ở thư mục gốc. User dùng API 8001 và MySQL riêng 3309, tên container service là user-service.
-
-```powershell
-node services/payment-service/scripts/init-outbox-key.mjs
-node services/user-service/scripts/init-secrets.mjs
-docker compose up -d --build --wait user-service student-service payment-service notification-service gateway
-docker compose exec user-service python seed.py
-node services/user-service/scripts/smoke-full-stack.mjs
-```
-
-Khóa JWT_SECRET_KEY và USER_INTERNAL_API_KEY nằm trong `.env` gốc được Git bỏ qua. Script chỉ tạo khóa khi thiếu, không thay khóa đã có hoặc in giá trị. Compose truyền USER_INTERNAL_API_KEY cho cả User và Student; Payment gửi header X-Internal-API-Key khi gọi nội bộ. Gateway không mở /internal/. Không dùng JWT_SECRET/JWT_EXPIRES_MINUTES cũ; tên biến là JWT_SECRET_KEY/JWT_EXPIRE_MINUTES.
-
-Payment xác thực Bearer JWT qua User /api/v1/users/me trên mỗi request để kiểm tra chữ ký, hạn dùng, trạng thái active và role hiện tại. Chỉ chủ sở hữu được đọc/thao tác tài khoản và giao dịch; Admin được seed số dư. Mất kết nối User làm Payment trả 503. Mock dữ liệu liên hệ không bỏ qua xác thực.
-
-Smoke test tạo User/Admin riêng bằng mật khẩu ngẫu nhiên, không đặt lại số dư hoặc mật khẩu của người dùng hiện có. Kiểm tra quyền truy cập và thanh toán đến email. Hướng dẫn phía dưới dành cho chạy riêng service; Compose riêng mặc định MySQL 3307 trùng Payment, cần đổi nếu chạy cùng project. SQL user_db.sql chạy trong database đã chọn; khi import thủ công phải chọn DB trước.
-
----
-
 ================================================================================
                  USER/AUTH SERVICE - HƯỚNG DẪN CÀI ĐẶT VÀ SỬ DỤNG
 ================================================================================
@@ -85,8 +65,10 @@ Không commit file .env lên GitHub. Chỉ commit file .env.example không chứ
 thật.
 
 --------------------------------------------------------------------------------
-4. CÁCH 1 - CHẠY BẰNG DOCKER COMPOSE (KHUYÊN DÙNG ĐỂ THỬ NGHIỆM)
+4. 2 CÁCH CHẠY THỬ NGHIỆM USER SERVICE
 --------------------------------------------------------------------------------
+*CÁCH 1 - CHẠY BẰNG DOCKER COMPOSE (KHUYÊN DÙNG ĐỂ THỬ NGHIỆM)*
+
 Docker Compose sẽ build User/Auth API, khởi động MySQL 8 và tạo bảng từ file
  db/user_db.sql khi volume database được khởi tạo lần đầu.
 
@@ -137,9 +119,8 @@ chạy lại script này.
 Nếu cổng 8001 hoặc 3307 đang được sử dụng, đổi AUTH_PORT hoặc MYSQL_PORT trong
 .env rồi chạy lại `docker compose up -d`.
 
---------------------------------------------------------------------------------
-5. CÁCH 2 - CHẠY FASTAPI TRỰC TIẾP TRÊN MÁY
---------------------------------------------------------------------------------
+*CÁCH 2 - CHẠY FASTAPI TRỰC TIẾP TRÊN MÁY*
+
 Cách này dùng MySQL đã cài trên Windows, XAMPP hoặc Laragon.
 
 Bước 1: Khởi động MySQL và import file db/user_db.sql bằng phpMyAdmin:
@@ -182,7 +163,7 @@ Mở Swagger UI tại http://127.0.0.1:8001/docs và health check tại
 http://127.0.0.1:8001/health.
 
 --------------------------------------------------------------------------------
-6. TÀI KHOẢN DEMO
+5. TÀI KHOẢN DEMO
 --------------------------------------------------------------------------------
 Tài khoản sinh viên:
     Username: student
@@ -200,7 +181,7 @@ tài khoản đã tồn tại.
 Đây là tài khoản dùng cho môi trường phát triển, không dùng cho production.
 
 --------------------------------------------------------------------------------
-7. DANH SÁCH API ENDPOINTS
+6. DANH SÁCH API ENDPOINTS
 --------------------------------------------------------------------------------
 Authentication:
 - POST /api/v1/auth/login
@@ -226,7 +207,7 @@ Health:
   Kiểm tra nhanh service có phản hồi.
 
 --------------------------------------------------------------------------------
-8. KIỂM THỬ API BẰNG SWAGGER
+7. KIỂM THỬ API BẰNG SWAGGER
 --------------------------------------------------------------------------------
 Mở Swagger UI:
 - Khi chạy Docker: http://localhost:8001/docs
@@ -258,7 +239,7 @@ hồi có thể xảy ra. Để biết request có thực sự lỗi hay không,
 trong mục Server response sau khi nhấn Execute.
 
 --------------------------------------------------------------------------------
-9. CƠ CHẾ BẢO MẬT
+8. CƠ CHẾ BẢO MẬT
 --------------------------------------------------------------------------------
 - Mật khẩu được băm bằng bcrypt.
 - JWT dùng HS256 và được kiểm tra chữ ký, hạn dùng, issuer, audience và claim.
@@ -269,7 +250,7 @@ trong mục Server response sau khi nhấn Execute.
 - Sau 5 lần nhập sai liên tiếp, tài khoản bị khóa trong 15 phút.
 
 --------------------------------------------------------------------------------
-10. MÃ TRẠNG THÁI HTTP 
+9. MÃ TRẠNG THÁI HTTP 
 --------------------------------------------------------------------------------
 200 OK                  Request thành công.
 401 Unauthorized        Đăng nhập sai, JWT không hợp lệ/hết hạn hoặc API key sai.
@@ -279,7 +260,7 @@ trong mục Server response sau khi nhấn Execute.
 429 Too Many Requests   Đã vượt giới hạn request đăng nhập.
 
 --------------------------------------------------------------------------------
-11. XỬ LÝ LỖI THƯỜNG GẶP
+10. XỬ LÝ LỖI THƯỜNG GẶP
 --------------------------------------------------------------------------------
 [Docker không khởi động]
 - Kiểm tra Docker Desktop đang chạy.
@@ -309,7 +290,7 @@ trong mục Server response sau khi nhấn Execute.
 - Đọc Server response và trường detail trong Response body sau khi Execute.
 
 --------------------------------------------------------------------------------
-12. CẤU TRÚC THƯ MỤC DỰ ÁN
+11. CẤU TRÚC THƯ MỤC DỰ ÁN
 --------------------------------------------------------------------------------
 UserAuthService_security_update/
 |-- app/
@@ -333,7 +314,7 @@ UserAuthService_security_update/
 `-- README.md                  # Tài liệu hướng dẫn
 
 --------------------------------------------------------------------------------
-13. LƯU Ý TRIỂN KHAI
+12. LƯU Ý TRIỂN KHAI
 --------------------------------------------------------------------------------
 - Thay các secret mẫu trước khi chạy.
 - Không commit .env hoặc thông tin đăng nhập thực lên GitHub.
