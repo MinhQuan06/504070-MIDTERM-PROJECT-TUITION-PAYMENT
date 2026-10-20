@@ -8,7 +8,7 @@ import lombok.Data;
 @Data
 public class CreateTransactionRequest {
 
-    @NotNull(message = "payerUserId không được để trống")
+    // Optional legacy field: controller rejects mismatches and derives payer from JWT.
     private Long payerUserId;
 
     @NotNull(message = "tuitionId không được để trống")

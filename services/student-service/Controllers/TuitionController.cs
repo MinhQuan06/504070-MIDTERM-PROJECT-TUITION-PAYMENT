@@ -11,10 +11,12 @@ namespace Student.Controllers
     public class TuitionController : ControllerBase
     {
         private readonly StudentDbContext _context;
+        private readonly IConfiguration _configuration;
 
-        public TuitionController(StudentDbContext context)
+        public TuitionController(StudentDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -155,8 +157,14 @@ namespace Student.Controllers
         /// Thanh toán học phí (sử dụng Optimistic Concurrency Control)
         /// </summary>
         [HttpPost("{id}/pay")]
-        public async Task<IActionResult> PayTuition(long id, [FromBody] PayTuitionRequest request)
+        public async Task<IActionResult> PayTuition(long id, [FromBody] PayTuitionRequest request, [FromHeader(Name = "X-Internal-API-Key")] string? providedKey)
         {
+            var key = _configuration["Payment:InternalApiKey"];
+            if (string.IsNullOrEmpty(key)) return StatusCode(503, new { message = "Internal authentication is not configured." });
+            if (providedKey == null || !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(key), System.Text.Encoding.UTF8.GetBytes(providedKey)))
+                return Unauthorized(new { message = "Invalid internal service credentials." });
+
             if (request.Transaction_ID <= 0)
             {
                 return BadRequest(new { message = "Invalid transaction ID. Must be greater than 0." });
@@ -170,10 +178,18 @@ namespace Student.Controllers
                 return NotFound(new { message = $"Tuition record with ID {id} was not found." });
             }
 
+            // Validate the immutable request snapshot, including on replay.
+            if (tuition.Student_ID != request.Student_ID || tuition.Amount != request.Amount)
+                return Conflict(new { message = "Tuition student or amount no longer matches the payment." });
+
             if (tuition.Status == "PAID")
             {
-                return Conflict(new { message = "Tuition has already been paid." });
+                if (tuition.Paid_By_Transaction_ID == request.Transaction_ID)
+                    return Ok(new { message = "Payment already applied.", data = tuition });
+                return Conflict(new { message = "Tuition was paid by another transaction." });
             }
+            if (request.Expected_Version.HasValue && tuition.Version != request.Expected_Version.Value)
+                return Conflict(new { message = "Tuition version changed. Reload and create a new payment." });
 
             tuition.Status = "PAID";
             tuition.Paid_By_Transaction_ID = request.Transaction_ID;
@@ -185,10 +201,13 @@ namespace Student.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                return Conflict(new
-                {
-                    message = "Tuition was modified by another request. Please check its status."
-                });
+                // A concurrent replay of the same operation is also successful.
+                _context.ChangeTracker.Clear();
+                var current = await _context.Tuitions.AsNoTracking().FirstOrDefaultAsync(t => t.Tuition_ID == id);
+                if (current?.Status == "PAID" && current.Paid_By_Transaction_ID == request.Transaction_ID
+                    && current.Student_ID == request.Student_ID && current.Amount == request.Amount)
+                    return Ok(new { message = "Payment already applied.", data = current });
+                return Conflict(new { message = "Tuition changed or was paid by another transaction." });
             }
 
             return Ok(new

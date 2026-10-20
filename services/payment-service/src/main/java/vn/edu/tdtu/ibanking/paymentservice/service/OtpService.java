@@ -36,8 +36,9 @@ public class OtpService {
      * 3. Lưu vào DB với thời hạn 5 phút.
      * 4. Trả về mã OTP gốc (plain text) để gửi qua RabbitMQ cho Notification Service.
      */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public IssuedOtp generateAndSaveOtp(Long transactionId) {
+        otpRepository.lockIssuance();
         LocalDateTime now = LocalDateTime.now();
 
         // 1. Vô hiệu hóa các OTP cũ còn hiệu lực của giao dịch này

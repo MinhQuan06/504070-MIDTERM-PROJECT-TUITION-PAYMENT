@@ -1,3 +1,23 @@
+# Tích hợp với project chính
+
+Ưu tiên Docker Compose ở thư mục gốc. User dùng API 8001 và MySQL riêng 3309, tên container service là user-service.
+
+```powershell
+node services/payment-service/scripts/init-outbox-key.mjs
+node services/user-service/scripts/init-secrets.mjs
+docker compose up -d --build --wait user-service student-service payment-service notification-service gateway
+docker compose exec user-service python seed.py
+node services/user-service/scripts/smoke-full-stack.mjs
+```
+
+Khóa JWT_SECRET_KEY và USER_INTERNAL_API_KEY nằm trong `.env` gốc được Git bỏ qua. Script chỉ tạo khóa khi thiếu, không thay khóa đã có hoặc in giá trị. Compose truyền USER_INTERNAL_API_KEY cho cả User và Student; Payment gửi header X-Internal-API-Key khi gọi nội bộ. Gateway không mở /internal/. Không dùng JWT_SECRET/JWT_EXPIRES_MINUTES cũ; tên biến là JWT_SECRET_KEY/JWT_EXPIRE_MINUTES.
+
+Payment xác thực Bearer JWT qua User /api/v1/users/me trên mỗi request để kiểm tra chữ ký, hạn dùng, trạng thái active và role hiện tại. Chỉ chủ sở hữu được đọc/thao tác tài khoản và giao dịch; Admin được seed số dư. Mất kết nối User làm Payment trả 503. Mock dữ liệu liên hệ không bỏ qua xác thực.
+
+Smoke test tạo User/Admin riêng bằng mật khẩu ngẫu nhiên, không đặt lại số dư hoặc mật khẩu của người dùng hiện có. Kiểm tra quyền truy cập và thanh toán đến email. Hướng dẫn phía dưới dành cho chạy riêng service; Compose riêng mặc định MySQL 3307 trùng Payment, cần đổi nếu chạy cùng project. SQL user_db.sql chạy trong database đã chọn; khi import thủ công phải chọn DB trước.
+
+---
+
 ================================================================================
                  USER/AUTH SERVICE - HƯỚNG DẪN CÀI ĐẶT VÀ SỬ DỤNG
 ================================================================================

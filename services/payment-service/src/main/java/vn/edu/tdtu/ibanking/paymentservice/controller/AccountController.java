@@ -1,6 +1,7 @@
 package vn.edu.tdtu.ibanking.paymentservice.controller;
 
 import jakarta.validation.Valid;
+import vn.edu.tdtu.ibanking.paymentservice.security.PaymentActor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,11 +19,12 @@ public class AccountController {
     private final AccountService accountService;
 
     /**
-     * 1. API Công khai: Lấy thông tin số dư tài khoản theo userId
+     * 1. API có JWT: Chỉ chủ tài khoản được xem số dư theo userId
      * Được sử dụng bởi Web App (Client) thông qua API Gateway.
      */
     @GetMapping("/{userId}")
-    public ResponseEntity<AccountResponse> getAccountBalance(@PathVariable Long userId) {
+    public ResponseEntity<AccountResponse> getAccountBalance(@PathVariable Long userId, @RequestAttribute("paymentActor") PaymentActor actor) {
+        actor.requireOwner(userId);
         return ResponseEntity.ok(accountService.getAccountByUserId(userId));
     }
 
@@ -32,7 +34,8 @@ public class AccountController {
      */
     @PostMapping
     public ResponseEntity<AccountResponse> createOrSeedAccount(
-            @Valid @RequestBody CreateAccountRequest request) {
+            @Valid @RequestBody CreateAccountRequest request, @RequestAttribute("paymentActor") PaymentActor actor) {
+        actor.requireAdmin();
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(accountService.createOrUpdateSeedAccount(request.getUserId(), request.getBalance()));
     }

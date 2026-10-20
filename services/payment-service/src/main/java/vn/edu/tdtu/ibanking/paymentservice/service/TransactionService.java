@@ -26,14 +26,15 @@ public class TransactionService {
     private final AccountService accountService;
     private final OtpService otpService;
     private final NotificationProducer notificationProducer;
-    private final PaymentCompletionService paymentCompletionService;
+    private final SagaPreparationService sagaPreparation;
+    private final PaymentSagaWorker sagaWorker;
     private final UserServiceClient userServiceClient;
     private final StudentServiceClient studentServiceClient;
 
     /**
      * BƯỚC 1: KHỞI TẠO GIAO DỊCH (PENDING), SINH OTP & BẮN SỰ KIỆN RABBITMQ
      */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public TransactionResponse initiateTransaction(CreateTransactionRequest request) {
         UserDto payer = userServiceClient.getUserById(request.getPayerUserId());
 
@@ -64,6 +65,8 @@ public class TransactionService {
                 .studentId(request.getStudentId())
                 .amount(request.getAmount())
                 .status(TransactionStatus.PENDING)
+                .tuitionVersion(tuition.getVersion())
+                .payerEmail(payer.getEmail()).payerFullName(payer.getFullName())
                 .build();
 
         tx = transactionRepository.save(tx);
@@ -89,9 +92,9 @@ public class TransactionService {
     /**
      * CẤP LẠI MÃ OTP MỚI (RESEND OTP) & BẮN SỰ KIỆN RABBITMQ
      */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public TransactionResponse resendOtp(Long transactionId) {
-        Transaction tx = transactionRepository.findById(transactionId)
+        Transaction tx = transactionRepository.findByIdForUpdate(transactionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy giao dịch: " + transactionId));
 
         if (tx.getStatus() != TransactionStatus.PENDING) {
@@ -122,71 +125,12 @@ public class TransactionService {
      * BƯỚC 2: XÁC THỰC OTP VÀ THỰC THI SAGA THANH TOÁN
      */
     public TransactionResponse verifyOtpAndExecuteSaga(Long transactionId, String otpCode) {
-        Transaction tx = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy giao dịch: " + transactionId));
-
-        if (tx.getStatus() == TransactionStatus.SUCCESS) {
-            return mapToResponse(tx, null, "Giao dịch đã được xử lý thành công trước đó (Idempotent).");
-        }
-        if (tx.getStatus() == TransactionStatus.FAILED) {
-            throw new BusinessException("Giao dịch này đã thất bại trước đó, vui lòng tạo giao dịch mới.");
-        }
-
-        otpService.verifyAndConsumeOtp(transactionId, otpCode);
-
-        return executePaymentSaga(transactionId);
-    }
-
-    /**
-     * LUỒNG SAGA CÓ BÙ TRỪ & GỬI EMAIL XÁC NHẬN KHI THÀNH CÔNG
-     */
-    public TransactionResponse executePaymentSaga(Long transactionId) {
-        Transaction tx = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy giao dịch: " + transactionId));
-
-        if (tx.getStatus() == TransactionStatus.SUCCESS) {
-            return mapToResponse(tx, null, "Giao dịch đã được xử lý thành công trước đó (Idempotent).");
-        }
-        if (tx.getStatus() == TransactionStatus.FAILED) {
-            throw new BusinessException("Giao dịch này đã thất bại và kết thúc trước đó.");
-        }
-
-        // Resolve receipt recipient before any debit or remote mutation.
-        UserDto payer = userServiceClient.getUserById(tx.getPayerUserId());
-
-        // Bước Saga 1: Trừ tiền cục bộ tại Payment DB
-        AccountResponse updatedAccount;
-        try {
-            updatedAccount = accountService.deductBalance(tx.getPayerUserId(), tx.getAmount());
-        } catch (InsufficientBalanceException ex) {
-            tx.setStatus(TransactionStatus.FAILED);
-            tx.setCompletedAt(LocalDateTime.now());
-            transactionRepository.save(tx);
-            throw ex;
-        }
-
-        // Bước Saga 2: Gọi sang Student Service để đánh dấu học phí PAID
-        boolean markedPaid = studentServiceClient.markTuitionAsPaid(tx.getTuitionId(), tx.getTransactionId());
-
-        // Bước Saga 3: Bù trừ (Hoàn tiền) nếu Student Service từ chối
-        if (!markedPaid) {
-            log.warn("Saga Compensation: Gạch nợ thất bại cho txId={}. Hoàn tiền {} VND cho userId={}",
-                    tx.getTransactionId(), tx.getAmount(), tx.getPayerUserId());
-
-            accountService.refundBalance(tx.getPayerUserId(), tx.getAmount());
-
-            tx.setStatus(TransactionStatus.FAILED);
-            tx.setCompletedAt(LocalDateTime.now());
-            transactionRepository.save(tx);
-
-            throw new BusinessException("Khoản học phí vừa được thanh toán bởi người khác. Hệ thống đã hoàn lại tiền vào tài khoản của bạn.");
-        }
-
-        // SUCCESS and its email event commit atomically in a separate proxied local transaction.
-        tx = paymentCompletionService.complete(tx.getTransactionId(), payer);
-
-        log.info("Saga Hoàn tất: Giao dịch txId={} thành công (SUCCESS)!", tx.getTransactionId());
-        return mapToResponse(tx, payer.getEmail(), "Xác thực OTP và thanh toán học phí thành công!");
+        Transaction tx = sagaPreparation.prepare(transactionId, otpCode);
+        if (tx.getStatus() == TransactionStatus.PROCESSING) tx = sagaWorker.process(transactionId);
+        if (tx.getStatus() == TransactionStatus.FAILED)
+            throw new BusinessException("Student rejected this payment. Funds have been refunded.");
+        return mapToResponse(tx, null, tx.getStatus() == TransactionStatus.PROCESSING
+                ? "Payment is being reconciled; do not create a replacement payment." : "Payment completed successfully.");
     }
 
     @Transactional(readOnly = true)

@@ -12,6 +12,9 @@ import java.util.Optional;
 
 @Repository
 public interface OtpRepository extends JpaRepository<Otp, Long> {
+    @Query(value="SELECT lock_id FROM otp_issuance_lock WHERE lock_id=1 FOR UPDATE", nativeQuery=true)
+    Integer lockIssuance();
+
 
     /**
      * Kiểm tra xem mã băm (code_hash) có bị trùng với bất kỳ OTP nào đang còn hiệu lực không

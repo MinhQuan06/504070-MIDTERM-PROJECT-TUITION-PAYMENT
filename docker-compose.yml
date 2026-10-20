@@ -1,16 +1,23 @@
 # Hạ tầng dùng chung. Mỗi service bật dần khi đã có Dockerfile (xem phần comment bên dưới).
 services:
   user-db:
-    image: postgres:16
+    image: mysql:8.0
     environment:
-      POSTGRES_DB: ${USER_DB_NAME}
-      POSTGRES_USER: ${USER_DB_USER}
-      POSTGRES_PASSWORD: ${USER_DB_PASSWORD}
+      MYSQL_DATABASE: ${USER_DB_NAME:-user_db}
+      MYSQL_USER: ${USER_DB_USER:-user_svc}
+      MYSQL_PASSWORD: ${USER_DB_PASSWORD:-change_me_user}
+      MYSQL_ROOT_PASSWORD: ${USER_DB_ROOT_PASSWORD:-change_me_user_root}
     volumes:
-      - user-db-data:/var/lib/postgresql/data
-      - ./db/user:/docker-entrypoint-initdb.d:ro
+      - user-mysql-data:/var/lib/mysql
+      - ./services/user-service/db/user_db.sql:/docker-entrypoint-initdb.d/user.sql:ro
     ports:
-      - "5433:5432"
+      - "127.0.0.1:${USER_DB_PORT:-3309}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u$$MYSQL_USER $$MYSQL_DATABASE -e 'SELECT 1 FROM users LIMIT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
 
   payment-db:
     image: mysql:8.0
@@ -84,12 +91,30 @@ services:
       student-service:
         condition: service_started
 
-  # ---- Bỏ comment từng khối khi service đã có Dockerfile ----
-  # user-service:
-  #   build: ./services/user-service
-  #   env_file: .env
-  #   depends_on: [user-db]
-  #
+  user-service:
+    build: ./services/user-service
+    init: true
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://${USER_DB_USER:-user_svc}:${USER_DB_PASSWORD:-change_me_user}@user-db:3306/${USER_DB_NAME:-user_db}?charset=utf8mb4
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      INTERNAL_API_KEY: ${USER_INTERNAL_API_KEY:-}
+      JWT_ISSUER: ${JWT_ISSUER:-ibanking-user-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ibanking-api}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-30}
+      AUTO_CREATE_TABLES: "false"
+    ports:
+      - "127.0.0.1:8001:8001"
+    depends_on:
+      user-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
   payment-service:
     build: ./services/payment-service
     init: true
@@ -97,6 +122,8 @@ services:
     environment:
       SERVER_PORT: 8082
       OUTBOX_ENCRYPTION_KEY: ${OUTBOX_ENCRYPTION_KEY:-}
+      SAGA_RECOVERY_ENABLED: ${SAGA_RECOVERY_ENABLED:-true}
+      SAGA_POLL_DELAY_MS: ${SAGA_POLL_DELAY_MS:-1000}
       OUTBOX_ENABLED: ${OUTBOX_ENABLED:-true}
       OUTBOX_POLL_DELAY_MS: ${OUTBOX_POLL_DELAY_MS:-1000}
       OUTBOX_CONFIRM_TIMEOUT_MS: ${OUTBOX_CONFIRM_TIMEOUT_MS:-5000}
@@ -111,17 +138,22 @@ services:
       MOCK_ENABLED: ${PAYMENT_MOCK_ENABLED:-false}
       USER_MOCK_ENABLED: ${PAYMENT_USER_MOCK_ENABLED:-${PAYMENT_MOCK_ENABLED:-false}}
       STUDENT_MOCK_ENABLED: ${PAYMENT_STUDENT_MOCK_ENABLED:-${PAYMENT_MOCK_ENABLED:-false}}
+      USER_INTERNAL_API_KEY: ${USER_INTERNAL_API_KEY:-}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:8001}
       STUDENT_SERVICE_URL: ${STUDENT_SERVICE_URL:-http://student-service:5071}
     ports:
       - "127.0.0.1:8082:8082"
     depends_on:
+      user-service:
+        condition: service_healthy
+      student-service:
+        condition: service_started
       payment-db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8082/api/v1/accounts/1"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8082/health"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -133,6 +165,7 @@ services:
     restart: unless-stopped
     environment:
       ASPNETCORE_URLS: http://+:5071
+      Payment__InternalApiKey: ${USER_INTERNAL_API_KEY:-}
       ConnectionStrings__student_db: Server=student-db;Port=3306;Database=${STUDENT_DB_NAME:-student_db};User ID=${STUDENT_DB_USER:-student_svc};Password=${STUDENT_DB_PASSWORD:-change_me_student};
     ports:
       - "127.0.0.1:5071:5071"
@@ -168,7 +201,8 @@ services:
         condition: service_started
 
 volumes:
-  user-db-data:
+  user-db-data: # Legacy PostgreSQL volume; preserved, not mounted.
+  user-mysql-data:
   payment-mysql-data:
   student-db-data: # Legacy PostgreSQL volume, not mounted into MySQL.
   student-mysql-data:

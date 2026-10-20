@@ -8,7 +8,12 @@ import org.springframework.web.client.RestClient;
 import vn.edu.tdtu.ibanking.paymentservice.dto.TuitionDto;
 import vn.edu.tdtu.ibanking.paymentservice.exception.ResourceNotFoundException;
 
-import java.util.Map;
+import java.util.LinkedHashMap;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientException;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
 
 @Component
 @Slf4j
@@ -16,13 +21,18 @@ public class StudentServiceClient {
 
     private final RestClient restClient;
     private final boolean mockEnabled;
+    private final String internalApiKey;
 
     public StudentServiceClient(
             RestClient.Builder builder,
             @Value("${app.external-services.student-service-url:http://localhost:5071}") String baseUrl,
-            @Value("${app.external-services.student-mock-enabled:false}") boolean mockEnabled) {
-        this.restClient = builder.baseUrl(baseUrl).build();
+            @Value("${app.external-services.student-mock-enabled:false}") boolean mockEnabled,
+            @Value("${app.external-services.user-internal-api-key:}") String internalApiKey) {
+        var factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
+        factory.setReadTimeout(Duration.ofSeconds(5));
+        this.restClient = builder.clone().requestFactory(factory).baseUrl(baseUrl).build();
         this.mockEnabled = mockEnabled;
+        this.internalApiKey = internalApiKey;
     }
 
     /**
@@ -56,33 +66,26 @@ public class StudentServiceClient {
         }
     }
 
-    /**
-     * Gọi POST http://localhost:5071/api/Tuition/{id}/pay
-     * Body gửi lên: { "transaction_ID": <mã giao dịch> }
-     */
-    public boolean markTuitionAsPaid(Long tuitionId, Long transactionId) {
-        if (mockEnabled) {
-            if (tuitionId == 888L) {
-                log.warn("[MOCK] Giả lập xung đột: Học phí tuitionId=888 vừa được người khác thanh toán!");
-                return false;
-            }
-            log.info("[MOCK] Đã đánh dấu PAID bên Student Service cho tuitionId={}, transaction_ID={}", tuitionId, transactionId);
-            return true;
-        }
+    public enum PaymentResult { APPLIED, REJECTED, UNKNOWN }
 
+    /** Only explicit business rejection permits compensation; network/5xx/auth failures are uncertain. */
+    public PaymentResult markTuitionAsPaid(Long tuitionId, Long transactionId, String studentId, Long amount, Integer version) {
+        if (mockEnabled) return tuitionId == 888L ? PaymentResult.REJECTED : PaymentResult.APPLIED;
+        var body = new LinkedHashMap<String, Object>();
+        body.put("transaction_ID", transactionId);
+        body.put("student_ID", studentId);
+        body.put("amount", amount);
+        if (version != null) body.put("expected_Version", version);
         try {
-            log.info("Đang gọi Student Service: POST /api/Tuition/{}/pay với transaction_ID={}", tuitionId, transactionId);
-            restClient.post()
-                    .uri("/api/Tuition/{id}/pay", tuitionId)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("transaction_ID", transactionId))
-                    .retrieve()
-                    .toBodilessEntity();
-            return true;
-        } catch (Exception e) {
-            log.error("Student Service từ chối gạch nợ cho tuitionId={}, transaction_ID={}: {}",
-                    tuitionId, transactionId, e.getMessage());
-            return false;
+            var response = restClient.post().uri("/api/Tuition/{id}/pay", tuitionId)
+                    .header("X-Internal-API-Key", internalApiKey).contentType(MediaType.APPLICATION_JSON).body(body).retrieve().toBodilessEntity();
+            return response.getStatusCode().is2xxSuccessful() ? PaymentResult.APPLIED : PaymentResult.UNKNOWN;
+        } catch (HttpClientErrorException ex) {
+            int status = ex.getStatusCode().value();
+            return status == 400 || status == 404 || status == 409 || status == 422
+                    ? PaymentResult.REJECTED : PaymentResult.UNKNOWN;
+        } catch (RestClientException ex) {
+            return PaymentResult.UNKNOWN;
         }
     }
 }

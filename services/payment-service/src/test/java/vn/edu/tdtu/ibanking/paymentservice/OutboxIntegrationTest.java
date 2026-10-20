@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="OUTBOX_TEST_DATABASE", matches="true")
-@SpringBootTest(properties={"app.outbox.enabled=false", "app.outbox.encryption-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
+@SpringBootTest(properties={"app.saga.recovery-enabled=false", "app.outbox.enabled=false", "app.outbox.encryption-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
 class OutboxIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired PlatformTransactionManager manager;
@@ -109,16 +109,18 @@ class OutboxIntegrationTest {
     }
     @Test void successAndReceiptOutboxCommitOrRollbackTogether() {
         clear(); var tx=transaction();
+        tx.setStatus(TransactionStatus.PROCESSING); transactions.saveAndFlush(tx);
         var payer=UserDto.builder().userId(1L).fullName("Test").email("test@example.com").build();
         completion.complete(tx.getTransactionId(),payer);
         assertEquals(TransactionStatus.SUCCESS,transactions.findById(tx.getTransactionId()).orElseThrow().getStatus());
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM outbox_events WHERE event_id=?",Integer.class,"payment-succeeded-"+tx.getTransactionId()));
         var conflict=transaction();
+        conflict.setStatus(TransactionStatus.PROCESSING); transactions.saveAndFlush(conflict);
         template.executeWithoutResult(s -> notifications.sendPaymentSuccessEmailEvent(PaymentSuccessEmailEvent.builder()
                 .eventId("payment-succeeded-"+conflict.getTransactionId()).type("PaymentSucceeded")
                 .transactionId(conflict.getTransactionId().toString()).email("test@example.com").fullName("Test")
                 .studentId("52300001").amount(1000L).completedAt(Instant.now()).build()));
         assertThrows(org.springframework.dao.DataIntegrityViolationException.class,()->completion.complete(conflict.getTransactionId(),payer));
-        assertEquals(TransactionStatus.PENDING,transactions.findById(conflict.getTransactionId()).orElseThrow().getStatus());
+        assertEquals(TransactionStatus.PROCESSING,transactions.findById(conflict.getTransactionId()).orElseThrow().getStatus());
     }
 }

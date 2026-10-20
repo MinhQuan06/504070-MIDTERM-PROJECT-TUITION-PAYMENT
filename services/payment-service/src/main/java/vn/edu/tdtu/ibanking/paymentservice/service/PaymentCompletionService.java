@@ -23,8 +23,9 @@ public class PaymentCompletionService {
         Transaction tx = repository.findByIdForUpdate(transactionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
         if (tx.getStatus() == TransactionStatus.SUCCESS) return tx;
-        if (tx.getStatus() != TransactionStatus.PENDING) throw new BusinessException("Transaction is not pending");
+        if (tx.getStatus() != TransactionStatus.PROCESSING) throw new BusinessException("Transaction has not entered processing");
         tx.setStatus(TransactionStatus.SUCCESS);
+        tx.setNextAttemptAt(null);
         tx.setCompletedAt(LocalDateTime.now());
         tx = repository.save(tx);
         notifications.sendPaymentSuccessEmailEvent(PaymentSuccessEmailEvent.builder()

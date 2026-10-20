@@ -1,9 +1,4 @@
-CREATE DATABASE IF NOT EXISTS user_db
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
-USE user_db;
-
+-- Run in the selected database (MYSQL_DATABASE in Compose).
 CREATE TABLE IF NOT EXISTS users (
     user_id BIGINT NOT NULL AUTO_INCREMENT,
     username VARCHAR(50) NOT NULL,

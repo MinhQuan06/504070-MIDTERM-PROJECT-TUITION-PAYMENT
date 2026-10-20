@@ -3,6 +3,10 @@ package vn.edu.tdtu.ibanking.paymentservice.client;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
+import vn.edu.tdtu.ibanking.paymentservice.security.PaymentActor;
 import org.springframework.web.client.RestClient;
 import vn.edu.tdtu.ibanking.paymentservice.dto.UserDto;
 import vn.edu.tdtu.ibanking.paymentservice.exception.ResourceNotFoundException;
@@ -13,13 +17,26 @@ public class UserServiceClient {
 
     private final RestClient restClient;
     private final boolean mockEnabled;
+    private final String internalApiKey;
 
     public UserServiceClient(
             RestClient.Builder builder,
             @Value("${app.external-services.user-service-url}") String baseUrl,
-            @Value("${app.external-services.user-mock-enabled:false}") boolean mockEnabled) {
-        this.restClient = builder.baseUrl(baseUrl).build();
+            @Value("${app.external-services.user-mock-enabled:false}") boolean mockEnabled,
+            @Value("${app.external-services.user-internal-api-key:}") String internalApiKey) {
+        var requestFactory = new JdkClientHttpRequestFactory(HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(3)).build());
+        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+        this.restClient = builder.clone().requestFactory(requestFactory).baseUrl(baseUrl).build();
+        this.internalApiKey = internalApiKey;
         this.mockEnabled = mockEnabled;
+    }
+
+    public PaymentActor getAuthenticatedUser(String authorization) {
+        // Always validate with User, even when contact-data mocks are enabled.
+        return restClient.get().uri("/api/v1/users/me")
+                .header("Authorization", authorization).retrieve()
+                .body(PaymentActor.class);
     }
 
     public UserDto getUserById(Long userId) {
@@ -35,7 +52,8 @@ public class UserServiceClient {
 
         try {
             return restClient.get()
-                    .uri("/api/v1/users/{id}", userId)
+                    .uri("/internal/users/{id}", userId)
+                    .header("X-Internal-API-Key", internalApiKey)
                     .retrieve()
                     .body(UserDto.class);
         } catch (Exception e) {

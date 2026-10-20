@@ -19,9 +19,12 @@ class UserMe(BaseModel):
 
 
 class InternalUserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: int
     full_name: str
     email: EmailStr
+    phone: str | None = None
 
 
 class AdminUserResponse(UserMe):

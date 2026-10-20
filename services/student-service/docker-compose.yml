@@ -27,6 +27,7 @@ services:
     depends_on:
       - student-mysql
     environment:
+      - Payment__InternalApiKey=${USER_INTERNAL_API_KEY:-}
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__student_db=Server=student-mysql;Port=3306;Database=student_db;User ID=root;Password=;
 
