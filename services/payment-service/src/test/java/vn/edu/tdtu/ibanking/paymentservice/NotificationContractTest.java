@@ -46,7 +46,7 @@ class NotificationContractTest {
     @Test
     void issuedOtpUsesExactDatabaseExpiryAndFreshEventIds() {
         OtpRepository repository = mock(OtpRepository.class);
-        OtpService service = new OtpService(repository);
+        OtpService service = new OtpService(repository, mock(vn.edu.tdtu.ibanking.paymentservice.service.OtpPolicy.class));
         OtpService.IssuedOtp first = service.generateAndSaveOtp(42L);
         OtpService.IssuedOtp second = service.generateAndSaveOtp(42L);
         ArgumentCaptor<Otp> captor = ArgumentCaptor.forClass(Otp.class);

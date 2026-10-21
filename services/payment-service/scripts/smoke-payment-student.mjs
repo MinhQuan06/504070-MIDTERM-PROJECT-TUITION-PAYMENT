@@ -9,7 +9,7 @@ const adminToken = process.env.PAYMENT_TEST_ADMIN_TOKEN;
 assert.ok(token && adminToken, 'Use services/user-service/scripts/smoke-full-stack.mjs to provide authenticated test users');
 const studentId = `T${Date.now().toString(36)}`;
 async function call(url, body, status = 200, auth = token) {
-  const r = await fetch(url, {method: body === undefined ? 'GET' : 'POST', headers: {'content-type':'application/json', ...(url.startsWith(api) ? {authorization:`Bearer ${auth}`} : {})}, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)});
+  const r = await fetch(url, {method: body === undefined ? 'GET' : 'POST', headers: {'content-type':'application/json', ...(url.startsWith(api) ? {authorization:`Bearer ${auth}`} : url.startsWith(student) && body !== undefined ? {authorization:`Bearer ${adminToken}`} : {})}, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)});
   const text = await r.text();
   assert.equal(r.status, status, `${url}: ${r.status} ${text}`);
   return text ? JSON.parse(text) : null;
@@ -40,6 +40,9 @@ await call(`${api}/transactions`,{...body,studentId:'WRONG'},409);
 await call(`${api}/transactions`,{...body,payerUserId:userId+1},403);
 const tx=await call(`${api}/transactions`,body,201);
 assert.equal(tx.payerUserId,userId,'Payer must come from authenticated user');
+await call(`${api}/transactions/${tx.transactionId}/resend-otp`,{},429);
+await call(`${api}/transactions/${tx.transactionId}/verify-otp`,{otpCode:'000000'},409);
+assert.equal((await call(`${api}/accounts/${userId}`)).balance,50000000);
 await call(`${api}/transactions/${tx.transactionId}`,undefined,403,adminToken);
 await call(`${api}/transactions/${tx.transactionId}/resend-otp`,{},403,adminToken);
 await call(`${api}/transactions/${tx.transactionId}/verify-otp`,{otpCode:'123456'},403,adminToken);

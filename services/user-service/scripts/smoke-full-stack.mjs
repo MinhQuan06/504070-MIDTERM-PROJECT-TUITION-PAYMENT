@@ -58,6 +58,10 @@ parts[2]=(parts[2][0]==='A'?'B':'A')+parts[2].slice(1);
 await check(`/accounts/${userId}`,{headers:{authorization:`Bearer ${parts.join('.')}`}},401);
 const direct=await fetch(`http://localhost:8082/api/v1/accounts/${userId}`);
 assert.equal(direct.status,401,'Direct Payment port must also enforce auth');
+for (const [authorization,expected] of [[null,401],[`Bearer ${token}`,403]]) {
+ const denied=await fetch('http://localhost:5071/api/Tuition',{method:'POST',headers:{'content-type':'application/json',...(authorization?{authorization}:{})},body:JSON.stringify({student_ID:'RVWNOEXIST',semester:'AUTH',amount:1})});
+ assert.equal(denied.status,expected,'Student direct write must require Admin');
+}
 console.log('PASS: login, JWT profile/admin, invalid signature, expired token, direct-port auth, internal route protection.');
 const payment=spawnSync(process.execPath,[resolve(root,process.env.PAYMENT_SAGA_TEST==='true' ? 'services/payment-service/scripts/smoke-saga-recovery.mjs' : 'services/payment-service/scripts/smoke-payment-student.mjs')],{cwd:root,env:{...process.env,PAYMENT_TEST_USER_ID:String(userId),PAYMENT_TEST_EMAIL:email,PAYMENT_TEST_TOKEN:token,PAYMENT_TEST_ADMIN_TOKEN:adminToken},stdio:'inherit'});
 assert.equal(payment.status,0,'Full stack payment must pass');

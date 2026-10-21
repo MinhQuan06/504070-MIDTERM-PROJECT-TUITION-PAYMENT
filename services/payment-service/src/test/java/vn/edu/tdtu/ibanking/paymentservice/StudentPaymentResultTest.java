@@ -26,4 +26,18 @@ class StudentPaymentResultTest {
             }
         } finally {server.stop(0);}
     }
+    @Test void lookupPreservesNotFoundButReportsUpstreamFailureAsUnavailable() throws Exception {
+        var status = new AtomicInteger(404);
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/api/Tuition/1", ex -> { ex.sendResponseHeaders(status.get(),-1); ex.close(); });
+        server.start();
+        try {
+            var client = new StudentServiceClient(RestClient.builder(),"http://127.0.0.1:"+server.getAddress().getPort(),false,"test-key");
+            assertThrows(vn.edu.tdtu.ibanking.paymentservice.exception.ResourceNotFoundException.class, ()->client.getTuitionById(1L,"SV001",1000L));
+            status.set(503);
+            var error=assertThrows(org.springframework.web.server.ResponseStatusException.class, ()->client.getTuitionById(1L,"SV001",1000L));
+            assertEquals(503,error.getStatusCode().value());
+        } finally {server.stop(0);}
+    }
+
 }

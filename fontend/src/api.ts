@@ -22,7 +22,7 @@ export function errorText(error:unknown):string {
  if(status===401)return 'Phiên đăng nhập đã hết hạn hoặc thông tin đăng nhập chưa đúng.';
  if(status===404)return 'Không tìm thấy thông tin yêu cầu. Vui lòng kiểm tra mã sinh viên hoặc giao dịch.';
  if(status===403)return 'Bạn không có quyền thực hiện thao tác này.';
- if(status===429)return 'Bạn thao tác quá nhanh. Vui lòng đợi một phút rồi thử lại.';
+ if(status===429)return typeof error.response?.data?.message==='string'?error.response.data.message:'Bạn thao tác quá nhanh. Vui lòng đợi một phút rồi thử lại.';
  if(status>=500)return 'Dịch vụ đang tạm gián đoạn. Vui lòng thử tra cứu lại sau ít phút.';
  const message=error.response?.data?.message||error.response?.data?.detail;
  const translations:Record<string,string>={'Transaction already failed':'Giao dịch đã thất bại. Vui lòng kiểm tra số dư và học phí trước khi tạo lại.','Student rejected this payment. Funds have been refunded.':'Khoản học phí đã thay đổi hoặc được thanh toán trước đó. Số tiền đã được hoàn lại.','Invalid username or password.':'Tên đăng nhập hoặc mật khẩu chưa đúng.'};

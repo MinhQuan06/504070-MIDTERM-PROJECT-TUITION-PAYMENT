@@ -22,6 +22,8 @@ class SagaIntegrationTest {
     @Autowired SagaPreparationService preparation;
     @Autowired PaymentSagaWorker worker;
     @Autowired OtpService otp;
+    @Autowired OtpPolicy policy;
+    @Autowired org.springframework.transaction.PlatformTransactionManager manager;
     @Autowired AccountService accounts;
     @MockitoBean StudentServiceClient students;
     @MockitoBean UserServiceClient users;
@@ -107,4 +109,75 @@ class SagaIntegrationTest {
         assertEquals(5000,accounts.getAccountByUserId(payer).getBalance());
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM outbox_events WHERE transaction_id=?",Integer.class,tx.getTransactionId()));
     }
+    @Test void failedOtpGuessesCommitAndLockAfterFiveWithoutDebiting() {
+        for (int i=0;i<5;i++) assertThrows(BusinessException.class,()->preparation.prepare(tx.getTransactionId(),"000000"));
+        assertEquals(5,jdbc.queryForObject("SELECT otp_failed_attempts FROM transactions WHERE transaction_id=?",Integer.class,tx.getTransactionId()));
+        assertThrows(BusinessException.class,()->preparation.prepare(tx.getTransactionId(),code));
+        assertEquals(5000,accounts.getAccountByUserId(payer).getBalance());
+        assertEquals(TransactionStatus.PENDING,stored().getStatus());
+        assertNull(jdbc.queryForObject("SELECT used_at FROM otps WHERE transaction_id=? ORDER BY otp_id DESC LIMIT 1",java.sql.Timestamp.class,tx.getTransactionId()));
+    }
+
+    @Test void resendCooldownAndLifetimeLimitPersistInDatabase() {
+        var template = new org.springframework.transaction.support.TransactionTemplate(manager);
+        template.executeWithoutResult(status -> policy.reserveIssuance(tx.getTransactionId()));
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> template.executeWithoutResult(status -> policy.reserveIssuance(tx.getTransactionId())));
+        for (int i=0;i<5;i++) {
+            jdbc.update("UPDATE transactions SET otp_issued_at=UTC_TIMESTAMP(6)-INTERVAL 61 SECOND WHERE transaction_id=?",tx.getTransactionId());
+            template.executeWithoutResult(status -> policy.reserveIssuance(tx.getTransactionId()));
+        }
+        jdbc.update("UPDATE transactions SET otp_issued_at=UTC_TIMESTAMP(6)-INTERVAL 61 SECOND WHERE transaction_id=?",tx.getTransactionId());
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> template.executeWithoutResult(status -> policy.reserveIssuance(tx.getTransactionId())));
+        assertEquals(5,jdbc.queryForObject("SELECT otp_resend_count FROM transactions WHERE transaction_id=?",Integer.class,tx.getTransactionId()));
+    }
+
+    private java.util.List<Boolean> prepareTogether(Long[] ids, String[] codes) throws Exception {
+        var executor=java.util.concurrent.Executors.newFixedThreadPool(2);
+        var ready=new java.util.concurrent.CountDownLatch(2);
+        var start=new java.util.concurrent.CountDownLatch(1);
+        try {
+            var futures=new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+            for(int i=0;i<2;i++) {
+                final int index=i;
+                futures.add(executor.submit(()->{
+                    ready.countDown();
+                    if(!start.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Start barrier timed out");
+                    try {preparation.prepare(ids[index],codes[index]);return true;}
+                    catch(vn.edu.tdtu.ibanking.paymentservice.exception.InsufficientBalanceException expected){return false;}
+                }));
+            }
+            assertTrue(ready.await(10,java.util.concurrent.TimeUnit.SECONDS),"Both requests must be ready before release");
+            start.countDown();
+            var results=new java.util.ArrayList<Boolean>();
+            for(var future:futures)results.add(future.get(20,java.util.concurrent.TimeUnit.SECONDS));
+            return results;
+        } finally {start.countDown();executor.shutdownNow();}
+    }
+
+    @Test void concurrentConfirmationOfPendingTransactionConsumesOtpAndDebitsOnce() throws Exception {
+        var results=prepareTogether(new Long[]{tx.getTransactionId(),tx.getTransactionId()},new String[]{code,code});
+        assertEquals(java.util.List.of(true,true),results);
+        assertEquals(4000,accounts.getAccountByUserId(payer).getBalance());
+        assertEquals(TransactionStatus.PROCESSING,stored().getStatus());
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM otps WHERE transaction_id=? AND used_at IS NOT NULL",Integer.class,tx.getTransactionId()));
+    }
+
+    @Test void concurrentPendingTransactionsCannotSpendTheSameBalance() throws Exception {
+        accounts.createOrUpdateSeedAccount(payer,1500L);
+        var other=repository.saveAndFlush(Transaction.builder().payerUserId(payer).tuitionId(payer+1)
+                .studentId("SAGA").amount(1000L).payerEmail("saga@example.com").payerFullName("Saga test")
+                .status(TransactionStatus.PENDING).build());
+        extraTransactions.add(other.getTransactionId());
+        var otherCode=otp.generateAndSaveOtp(other.getTransactionId()).code();
+        var results=prepareTogether(new Long[]{tx.getTransactionId(),other.getTransactionId()},new String[]{code,otherCode});
+        assertEquals(1,results.stream().filter(Boolean::booleanValue).count());
+        assertEquals(500,accounts.getAccountByUserId(payer).getBalance());
+        var states=java.util.List.of(stored().getStatus(),repository.findById(other.getTransactionId()).orElseThrow().getStatus());
+        assertEquals(1,states.stream().filter(status->status==TransactionStatus.PROCESSING).count());
+        assertEquals(1,states.stream().filter(status->status==TransactionStatus.PENDING).count());
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM otps WHERE transaction_id IN (?,?) AND used_at IS NOT NULL",Integer.class,tx.getTransactionId(),other.getTransactionId()));
+    }
+
 }

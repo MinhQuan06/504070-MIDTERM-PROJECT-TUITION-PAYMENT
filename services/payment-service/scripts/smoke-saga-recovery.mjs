@@ -20,7 +20,7 @@ function compose(args,env=process.env){
 }
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 async function call(url,body,status=200,auth=token,method) {
- const r=await fetch(url,{method:method || (body===undefined?'GET':'POST'),headers:{'content-type':'application/json',...(url.startsWith(api)?{authorization:`Bearer ${auth}`}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+ const r=await fetch(url,{method:method || (body===undefined?'GET':'POST'),headers:{'content-type':'application/json',...(url.startsWith(api)?{authorization:`Bearer ${auth}`} : url.startsWith(student)&&body!==undefined&&!url.endsWith('/pay')?{authorization:`Bearer ${adminToken}`}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
  const text=await r.text();assert.equal(r.status,status,`${url}: ${r.status} ${text}`);
  return text?JSON.parse(text):null;
 }

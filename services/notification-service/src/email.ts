@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import nodemailer from 'nodemailer';
 import { config } from './config';
+import { requireCurrentOtp } from './otp-current';
 import { NotificationEvent, ensureFresh } from './events';
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]!));
@@ -23,6 +24,7 @@ export class EmailService {
   });
   async verify(): Promise<void> { await this.transport.verify(); }
   async send(event: NotificationEvent): Promise<void> {
+    await requireCurrentOtp(event);
     ensureFresh(event);
     await this.transport.sendMail({from: config.MAIL_FROM, to: event.email,
       messageId: `<${Buffer.from(event.eventId).toString('hex')}@ibanking.local>`, ...renderEmail(event)});

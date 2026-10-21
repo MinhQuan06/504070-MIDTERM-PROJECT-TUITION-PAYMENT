@@ -27,7 +27,7 @@ def login(
     db: Session = Depends(get_db),
 ) -> TokenResponse:
     username = form_data.username.strip()
-    user = db.scalar(select(User).where(User.username == username))
+    user = db.scalar(select(User).where(User.username == username).with_for_update())
     now = datetime.now(timezone.utc).replace(tzinfo=None)  # Naive UTC for MySQL DATETIME.
 
     if user is None:

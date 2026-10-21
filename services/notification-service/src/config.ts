@@ -14,6 +14,8 @@ const schema = z.object({
   MAIL_FROM: z.string().min(1).default('iBanking TDTU <no-reply@ibanking.local>'),
   MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
   RETRY_DELAY_MS: z.coerce.number().int().min(100).default(5000),
+  PAYMENT_SERVICE_URL: z.string().url().default('http://localhost:8082'),
+  INTERNAL_API_KEY: z.string().default(''),
   DEDUPE_DIR: z.string().min(1).default('./data/sent'),
 }).superRefine((v, ctx) => {
   if (Boolean(v.SMTP_USER) !== Boolean(v.SMTP_PASSWORD)) ctx.addIssue({code: 'custom', message: 'Set both SMTP_USER and SMTP_PASSWORD'});

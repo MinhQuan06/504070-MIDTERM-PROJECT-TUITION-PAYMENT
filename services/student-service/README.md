@@ -1,8 +1,18 @@
+# Student Service
 
-## Thanh toán nội bộ và idempotency
+.NET 10 + MySQL. Quản lý sinh viên, khoản học phí và trạng thái đã thanh toán.
 
-POST `/api/Tuition/{id}/pay` yêu cầu header `X-Internal-API-Key` khớp `Payment__InternalApiKey` (Compose gốc dùng USER_INTERNAL_API_KEY chung). Thiếu khóa cấu hình trả 503, sai khóa trả 401. Gateway không mở route pay.
+## Chạy
 
-Request mới gồm transaction_ID, student_ID, amount và expected_Version (version optional cho giao dịch cũ). MSSV/số tiền phải trùng DB. Khi UNPAID, version phải trùng nếu được truyền. Khi PAID bởi chính transaction_ID đó, trả lại 200 và dữ liệu cũ, không tăng version; giao dịch khác trả 409. Optimistic concurrency ngăn hai giao dịch khác nhau cùng thành công.
+Dùng [Docker Compose gốc](../../README.md). API http://localhost:5071; Swagger http://localhost:5071/swagger. Dữ liệu ban đầu gồm MSSV SV001–SV005.
 
-Ưu tiên chạy Compose gốc. Khi chạy Compose riêng cần đặt USER_INTERNAL_API_KEY và truyền cùng khóa cho Payment. API CRUD Student/Tuition ngoài pay vẫn là API quản trị demo chưa có JWT; bước này chỉ bảo vệ lệnh gạch nợ nội bộ.
+## API và quyền
+
+- GET `/api/Student`, `/api/Student/{id}`: tra cứu sinh viên.
+- GET `/api/Tuition`, `/api/Tuition/{id}`, `/api/Tuition/student/{studentId}`: tra cứu học phí.
+- POST/PUT/DELETE Student/Tuition: Bearer JWT có role Admin, kiểm tra qua User.
+- POST `/api/Tuition/{id}/pay`: chỉ Payment gọi với X-Internal-API-Key.
+
+Pay nhận transaction_ID, student_ID, amount và expected_Version. Chỉ gạch nợ một lần bằng optimistic concurrency. Replay cùng transaction ID trả kết quả cũ, không tăng version; transaction khác trả 409 nếu học phí đã PAID.
+
+Compose tự cấu hình UserService__Url và khóa Payment__InternalApiKey. Chạy local ngoài Docker dùng User tại http://localhost:8001. Không đưa khóa vào Git. Gateway chỉ mở các route Student tra cứu.

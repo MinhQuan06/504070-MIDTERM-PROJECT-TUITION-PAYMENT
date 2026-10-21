@@ -60,9 +60,11 @@ public class StudentServiceClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .body(TuitionDto.class);
-        } catch (Exception e) {
-            log.error("Lỗi khi gọi GET /api/Tuition/{}: {}", tuitionId, e.getMessage());
-            throw new ResourceNotFoundException("Không tìm thấy khoản học phí với ID: " + tuitionId + " bên Student Service.");
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            throw new ResourceNotFoundException("Không tìm thấy khoản học phí.");
+        } catch (org.springframework.web.client.RestClientException e) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "Dịch vụ Student đang gián đoạn.", e);
         }
     }
 

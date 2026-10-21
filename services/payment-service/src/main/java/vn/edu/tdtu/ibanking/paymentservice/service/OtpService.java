@@ -27,6 +27,7 @@ public class OtpService {
 
     private static final int OTP_EXPIRY_MINUTES = 5;
     private final OtpRepository otpRepository;
+    private final OtpPolicy policy;
     private final SecureRandom secureRandom = new SecureRandom();
 
     /**
@@ -54,7 +55,9 @@ public class OtpService {
         } while (otpRepository.existsByCodeHashAndUsedAtIsNullAndExpiresAtAfter(codeHash, now));
 
         // 3. Lưu OTP mới với thời hạn 5 phút
+        String eventId = UUID.randomUUID().toString();
         Otp otp = Otp.builder()
+                .eventId(eventId)
                 .transactionId(transactionId)
                 .codeHash(codeHash)
                 .expiresAt(now.plusMinutes(OTP_EXPIRY_MINUTES))
@@ -64,16 +67,17 @@ public class OtpService {
         otpRepository.save(otp);
 
         log.info("OTP issued for transactionId={}", transactionId);
-        return new IssuedOtp(UUID.randomUUID().toString(), rawOtp,
+        return new IssuedOtp(eventId, rawOtp,
                 otp.getExpiresAt().atZone(ZoneId.systemDefault()).toInstant());
     }
 
     /**
      * Xác thực và đánh dấu đã sử dụng OTP bằng cập nhật có điều kiện (chống nhập 2 lần cùng lúc)
      */
-    @Transactional
+    @Transactional(noRollbackFor = vn.edu.tdtu.ibanking.paymentservice.exception.OtpVerificationException.class)
     public void verifyAndConsumeOtp(Long transactionId, String rawOtpCode) {
         LocalDateTime now = LocalDateTime.now();
+        policy.requireAttemptsAvailable(transactionId);
         String codeHash = hashOtp(rawOtpCode);
 
         // Thực hiện câu lệnh UPDATE có điều kiện trên DB
@@ -81,7 +85,8 @@ public class OtpService {
 
         if (updatedRows == 0) {
             log.warn("Xác thực OTP thất bại cho transactionId={}", transactionId);
-            throw new BusinessException("Mã OTP không chính xác, đã hết hạn (5 phút) hoặc đã được sử dụng.");
+            policy.recordFailure(transactionId);
+            throw new vn.edu.tdtu.ibanking.paymentservice.exception.OtpVerificationException("Mã OTP không chính xác, đã hết hạn (5 phút) hoặc đã được sử dụng.");
         }
 
         log.info("Xác thực OTP thành công cho transactionId={}", transactionId);

@@ -20,7 +20,8 @@ public class PaymentAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return "/health".equals(path) || "OPTIONS".equals(request.getMethod())
+        return ("GET".equals(request.getMethod()) && path.startsWith("/internal/notifications/otp-current/"))
+                || "/health".equals(path) || "OPTIONS".equals(request.getMethod())
                 || path.startsWith("/swagger-ui") 
                 || path.startsWith("/v3/api-docs");
     }

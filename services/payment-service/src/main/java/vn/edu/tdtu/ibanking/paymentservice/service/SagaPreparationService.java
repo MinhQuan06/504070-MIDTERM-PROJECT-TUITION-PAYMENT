@@ -18,7 +18,7 @@ public class SagaPreparationService {
     private final UserServiceClient users;
 
     /** OTP use, debit and durable recovery state commit together, or all roll back. */
-    @Transactional
+    @Transactional(noRollbackFor = OtpVerificationException.class)
     public Transaction prepare(Long id, String code) {
         Transaction tx = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));

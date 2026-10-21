@@ -25,6 +25,7 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountService accountService;
     private final OtpService otpService;
+    private final OtpPolicy otpPolicy;
     private final NotificationProducer notificationProducer;
     private final SagaPreparationService sagaPreparation;
     private final PaymentSagaWorker sagaWorker;
@@ -62,7 +63,7 @@ public class TransactionService {
         Transaction tx = Transaction.builder()
                 .payerUserId(request.getPayerUserId())
                 .tuitionId(request.getTuitionId())
-                .studentId(request.getStudentId())
+                .studentId(tuition.getStudentId())
                 .amount(request.getAmount())
                 .status(TransactionStatus.PENDING)
                 .tuitionVersion(tuition.getVersion())
@@ -72,6 +73,7 @@ public class TransactionService {
         tx = transactionRepository.save(tx);
 
         // 1. Sinh OTP 6 chữ số
+        otpPolicy.reserveIssuance(tx.getTransactionId());
         OtpService.IssuedOtp issuedOtp = otpService.generateAndSaveOtp(tx.getTransactionId());
 
         // 2. Bắn sự kiện gửi email OTP qua RabbitMQ
@@ -104,6 +106,7 @@ public class TransactionService {
         UserDto payer = userServiceClient.getUserById(tx.getPayerUserId());
 
         // 1. Vô hiệu hóa OTP cũ và sinh OTP mới
+        otpPolicy.reserveIssuance(tx.getTransactionId());
         OtpService.IssuedOtp issuedOtp = otpService.generateAndSaveOtp(tx.getTransactionId());
 
         // 2. Bắn sự kiện gửi lại email OTP qua RabbitMQ

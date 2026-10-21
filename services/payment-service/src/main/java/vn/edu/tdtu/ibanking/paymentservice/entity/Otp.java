@@ -19,6 +19,9 @@ public class Otp {
     @Column(name = "otp_id")
     private Long otpId;
 
+    @Column(name = "event_id", length = 128)
+    private String eventId;
+
     @Column(name = "transaction_id", nullable = false)
     private Long transactionId;
 

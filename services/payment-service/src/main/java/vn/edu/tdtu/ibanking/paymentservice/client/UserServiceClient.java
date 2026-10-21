@@ -56,9 +56,11 @@ public class UserServiceClient {
                     .header("X-Internal-API-Key", internalApiKey)
                     .retrieve()
                     .body(UserDto.class);
-        } catch (Exception e) {
-            log.error("Lỗi khi gọi User Service: {}", e.getMessage());
-            throw new ResourceNotFoundException("Không thể xác thực thông tin người nộp tiền từ User Service (user_id=" + userId + ")");
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            throw new ResourceNotFoundException("Không tìm thấy người nộp tiền.");
+        } catch (org.springframework.web.client.RestClientException e) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "Dịch vụ User đang gián đoạn.", e);
         }
     }
 }

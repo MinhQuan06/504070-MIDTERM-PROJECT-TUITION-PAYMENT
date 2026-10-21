@@ -1,93 +1,55 @@
-# Phân hệ Đóng học phí (iBanking) - CS504070
+# iBanking — Đóng học phí
 
-Dự án giữa kỳ môn 504070 (HK1/2026-2027), Đại học Tôn Đức Thắng.
-Người dùng dùng số dư tài khoản để thanh toán toàn bộ học phí của một sinh viên TDTU (cho mình hoặc cho sinh viên khác), xác thực bằng OTP qua email.
+Ứng dụng mô phỏng thanh toán học phí TDTU: đăng nhập, tra cứu MSSV, xác nhận OTP qua email và xem lịch sử giao dịch.
 
-## Thành viên
+## Chạy nhanh
 
-| Họ tên | MSSV | Phụ trách |
-| --- | --- | --- |
-| (điền) | (điền) | (điền) |
-
-## Kiến trúc
-
-| Thành phần | Công nghệ | Thư mục | Trách nhiệm |
-| --- | --- | --- | --- |
-| API Gateway | Nginx | `gateway/` | Điểm vào duy nhất, routing,... |
-| User/Auth Service | Python + FastAPI | `services/user-service/` | Đăng nhập, JWT, thông tin người dùng |
-| Payment Service | Java + Spring Boot | `services/payment-service/` | Số dư, giao dịch, OTP, lịch sử, điều phối  |
-| Student Service | C# + ASP.NET Core | `services/student-service/` | Sinh viên, học phí, đánh dấu đã thanh toán |
-| Notification Service | TypeScript + NestJS | `services/notification-service/` | Gửi email OTP và email xác nhận (nhận sự kiện từ RabbitMQ) |
-| Web App | ... | `frontend/` | Giao diện người dùng |
-
-Mỗi service có database  riêng (User DB, Payment DB, Student DB). Chi tiết ở `docs/`.
-
-## Cấu trúc thư mục
-
-```
-tuition-payment/
-├── README.md
-├── docker-compose.yml        # hạ tầng: 3 database, RabbitMQ, Mailpit, Gateway
-├── .env.example              # mẫu biến môi trường (copy thành .env)
-├── gateway/                  # cấu hình Nginx
-├── services/
-│   ├── user-service/         # Python + FastAPI
-│   ├── payment-service/      # Java + Spring Boot
-│   ├── student-service/      # C# + ASP.NET Core
-│   └── notification-service/ # TypeScript + NestJS
-├── frontend/                 # Web App
-├── db/                       # script khởi tạo và dữ liệu mẫu (seed) cho từng DB
-└── docs/
-    ├── diagrams/             # Use Case, DFD, ERD, Microservices
-    ├── api/                  # thiết kế REST API
-    └── report/               # báo cáo
-```
-
-## Chạy hạ tầng (giai đoạn đầu)
-
-```bash
-cp .env.example .env
-docker compose up -d
-```
-
-- RabbitMQ management: http://localhost:15672
-- Mailpit (xem email OTP khi dev): http://localhost:8025
-- Gateway: http://localhost:8080
-
-Payment và Notification đã tích hợp trong Compose. Payment dùng MySQL và cổng 8082; Gateway dùng 8080. Student dùng MySQL/.NET ở cổng 5071; User dùng FastAPI/MySQL ở cổng 8001.
-
-## Quy trình làm việc nhóm
-
-- Nhánh `main` luôn ổn định, không push trực tiếp.
-- Mỗi việc làm trên nhánh riêng: `feature/<service>-<mô-tả>`, `docs/<mô-tả>`, `fix/<mô-tả>`.
-- Gộp vào `main` bằng Pull Request, có ít nhất 1 bạn trong nhóm review.
-- Commit ngắn gọn, bắt đầu bằng động từ: `add login endpoint`, `fix balance check`.
-- Không commit file `.env`, mật khẩu hay khóa bí mật.
-
-
-Payment dùng Transactional Outbox để phục hồi sự kiện email khi broker gián đoạn. Trước lần chạy đầu, tạo khóa bằng `node services/payment-service/scripts/init-outbox-key.mjs`; không commit .env hoặc đổi khóa tùy tiện. Xem [thiết kế và kiểm thử Outbox](docs/report/payment-outbox.md).
-
-## Chạy toàn bộ backend
+Cần Docker Desktop đang chạy và Node.js 22+. Mở PowerShell tại thư mục dự án:
 
 ```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 node services/payment-service/scripts/init-outbox-key.mjs
 node services/user-service/scripts/init-secrets.mjs
-docker compose up -d --build --wait user-service student-service payment-service notification-service gateway
+docker compose up -d --build --wait
 docker compose exec user-service python seed.py
-node services/user-service/scripts/smoke-full-stack.mjs
 ```
 
-User/MySQL dùng cổng 8001/3309, Payment/MySQL 8082/3307, Student/MySQL 5071/3308; Gateway 8080 và Mailpit 8025. Đặt hai cờ PAYMENT_USER_MOCK_ENABLED/PAYMENT_STUDENT_MOCK_ENABLED=false để dùng service thật. File `.env` và khóa tạo ngẫu nhiên không commit; giữ nguyên khóa qua restart. Mật khẩu DB truyền trong DATABASE_URL cần URL-encode nếu có ký tự đặc biệt.
+Mở **http://localhost:8080**. Tài khoản demo: `student / Admin123`; Admin: `admin / Admin123`. Seed giữ nguyên tài khoản đã có. Nếu User đã có từ trước nhưng chưa có số dư, Admin cần tạo tài khoản số dư demo.
 
-Payment yêu cầu Bearer JWT, xác thực danh tính/role qua User mỗi request. Chỉ chủ sở hữu xem/thao tác giao dịch, Admin được tạo/sửa số dư demo. Student `/pay` yêu cầu khóa nội bộ và xử lý idempotent. Payment giữ PROCESSING khi kết quả Student chưa rõ, tự đối soát sau timeout/restart; verify có thể trả 202 để client poll. CRUD Student ngoài `/pay` vẫn là API quản trị demo chưa có JWT.
+OTP và biên nhận mặc định nằm trong **Mailpit**, chưa gửi đến hộp thư thật. Muốn gửi email thật, cấu hình SMTP và email người dùng; không đưa mật khẩu SMTP vào Git.
 
-Kiểm thử đồng thời bằng `node services/payment-service/scripts/smoke-concurrency.mjs`. Kiểm thử mất phản hồi sau PAID bằng cách đặt PAYMENT_SAGA_TEST=true rồi chạy smoke-full-stack.mjs. Hai bài test tạo dữ liệu riêng, giữ lại để xem; không chạy đồng thời vì bài saga tạm đổi URL Student của container Payment. Xem README Payment để biết chi tiết và cách phục hồi URL nếu cưỡng bức dừng test.
+| Thành phần | Địa chỉ |
+| --- | --- |
+| Web và Gateway | http://localhost:8080 |
+| Mailpit | http://localhost:8025 |
+| User Swagger | http://localhost:8001/docs |
+| Payment Swagger | http://localhost:8082/swagger-ui.html |
+| Student Swagger | http://localhost:5071/swagger |
+| RabbitMQ Management | http://localhost:15672 |
 
-Compose gốc dùng volume MySQL mới, giữ nguyên volume PostgreSQL cũ; không tự chuyển dữ liệu. Ưu tiên Compose gốc, không chạy Compose riêng cùng lúc vì có thể trùng cổng.
+## Demo
 
-## Giao diện web
+Đăng nhập → Đóng học phí → nhập MSSV (ví dụ SV001) → chọn khoản chưa trả → đồng ý điều khoản → lấy OTP từ Mailpit → xác nhận → kiểm tra số dư và lịch sử. Nếu giao dịch đang PROCESSING, chờ kết quả; không tạo giao dịch thay thế.
 
-Giao diện React/TypeScript nằm trong [fontend/](fontend/README.md). Chạy `docker compose up -d --build --wait fontend user-service student-service payment-service notification-service gateway`, rồi mở http://localhost:8080. Gateway phục vụ web cùng API; URL gốc 8080 giờ là trang đăng nhập/tổng quan. Dùng `docker compose exec user-service python seed.py` nếu cần tạo hai tài khoản demo chưa có.
+## Kiểm thử
 
-Luồng web gồm đăng nhập, số dư, tra cứu/đóng học phí, OTP và lịch sử/chi tiết. Dữ liệu được gọi từ backend thật; không reset database khi khởi động web. Xem README fontend để chạy Vite local và xử lý giao dịch PROCESSING.
+```powershell
+node services/user-service/scripts/smoke-full-stack.mjs
+node services/payment-service/scripts/smoke-concurrency.mjs
+```
+
+Chạy lần lượt; script tạo dữ liệu riêng và giữ lại để xem. Nếu đăng nhập bị 429 do chạy lặp nhanh, chờ một phút. Xem [kết quả transaction/concurrency](docs/tests/transaction-concurrency-2026-10-21.md).
+
+## Cập nhật và dừng
+
+Lần đầu đổi sang cấu hình mạng mới: `docker compose down`, rồi chạy lại lệnh khởi động. Không thêm `-v`, không xóa volume và không đổi khóa Outbox nếu còn dữ liệu cũ. Dừng tạm bằng `docker compose stop`.
+
+Không commit `.env`, `node_modules`, `dist`, `target`, `bin`, `obj` hoặc file tạm. Xem [cấu hình bảo mật và OTP](docs/security-hardening.md).
+
+## Mã nguồn
+
+- [fontend](fontend/README.md): React/TypeScript, gọi API qua Gateway.
+- [User](services/user-service/README.md): đăng nhập, JWT và thông tin người dùng.
+- [Student](services/student-service/README.md): sinh viên và học phí.
+- [Payment](services/payment-service/README.md): số dư, OTP, Saga và Outbox.
+- [Notification](services/notification-service/README.md): nhận sự kiện và gửi email.

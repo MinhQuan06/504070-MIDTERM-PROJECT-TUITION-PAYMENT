@@ -54,4 +54,10 @@ public class GlobalExceptionHandler {
                 "message", message
         ));
     }
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<?> handleStatus(org.springframework.web.server.ResponseStatusException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
+                "status", ex.getStatusCode().value(), "message", ex.getReason() == null ? "Request rejected" : ex.getReason()));
+    }
+
 }

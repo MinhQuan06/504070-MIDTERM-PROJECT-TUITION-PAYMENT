@@ -57,9 +57,9 @@ for(let round=0;round<3;round++){
   await request(`${api}/accounts`,{userId:user.id,balance:1500},admin.token,201);
  }
  const studentId=`C${tag.toString(36)}${round}`;
- await request(`${student}/Student`,{student_ID:studentId,full_Name:'Concurrency demo'},undefined,201);
+ await request(`${student}/Student`,{student_ID:studentId,full_Name:'Concurrency demo'},admin.token,201);
  const fees=[];
- for(let i=0;i<3;i++)fees.push((await request(`${student}/Tuition`,{student_ID:studentId,semester:`CC${i}`,amount:i===2?400:1000},undefined,201)).data);
+ for(let i=0;i<3;i++)fees.push((await request(`${student}/Tuition`,{student_ID:studentId,semester:`CC${i}`,amount:i===2?400:1000},admin.token,201)).data);
  const started=await Promise.all(fees.slice(0,2).map(fee=>request(`${api}/transactions`,{tuitionId:fee.tuition_ID,studentId,amount:1000},owner.token,201).then(r=>r.data)));
  const codes=await Promise.all(started.map(tx=>otp(tx,owner)));
  const confirmations=await Promise.all(started.map((tx,i)=>request(`${api}/transactions/${tx.transactionId}/verify-otp`,{otpCode:codes[i]},owner.token,null)));
