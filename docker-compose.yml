@@ -79,6 +79,17 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  fontend:
+    build: ./fontend
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
   gateway:
     image: nginx:1.27
     volumes:
@@ -86,6 +97,8 @@ services:
     ports:
       - "8080:80"
     depends_on:
+      fontend:
+        condition: service_healthy
       payment-service:
         condition: service_healthy
       student-service:
