@@ -85,3 +85,9 @@ Payment yêu cầu Bearer JWT, xác thực danh tính/role qua User mỗi reques
 Kiểm thử đồng thời bằng `node services/payment-service/scripts/smoke-concurrency.mjs`. Kiểm thử mất phản hồi sau PAID bằng cách đặt PAYMENT_SAGA_TEST=true rồi chạy smoke-full-stack.mjs. Hai bài test tạo dữ liệu riêng, giữ lại để xem; không chạy đồng thời vì bài saga tạm đổi URL Student của container Payment. Xem README Payment để biết chi tiết và cách phục hồi URL nếu cưỡng bức dừng test.
 
 Compose gốc dùng volume MySQL mới, giữ nguyên volume PostgreSQL cũ; không tự chuyển dữ liệu. Ưu tiên Compose gốc, không chạy Compose riêng cùng lúc vì có thể trùng cổng.
+
+## Giao diện web
+
+Giao diện React/TypeScript nằm trong [fontend/](fontend/README.md). Chạy `docker compose up -d --build --wait fontend user-service student-service payment-service notification-service gateway`, rồi mở http://localhost:8080. Gateway phục vụ web cùng API; URL gốc 8080 giờ là trang đăng nhập/tổng quan. Dùng `docker compose exec user-service python seed.py` nếu cần tạo hai tài khoản demo chưa có.
+
+Luồng web gồm đăng nhập, số dư, tra cứu/đóng học phí, OTP và lịch sử/chi tiết. Dữ liệu được gọi từ backend thật; không reset database khi khởi động web. Xem README fontend để chạy Vite local và xử lý giao dịch PROCESSING.
