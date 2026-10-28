@@ -1,328 +1,269 @@
 ================================================================================
                  USER/AUTH SERVICE - HƯỚNG DẪN CÀI ĐẶT VÀ SỬ DỤNG
 ================================================================================
-Dịch vụ xác thực người dùng và quản lý thông tin tài khoản cho hệ thống
+Dịch vụ xác thực người dùng và cung cấp thông tin tài khoản cho hệ thống
 đóng học phí iBanking theo kiến trúc microservices.
 
 Công nghệ: Python | FastAPI | SQLAlchemy | MySQL 8 | JWT | Docker Compose
 
-Có thể chạy dự án theo một trong hai cách:
-- Cách 1: Docker Compose tự khởi chạy MySQL và User/Auth API.
-- Cách 2: Chạy FastAPI trực tiếp trên máy, kết nối tới MySQL có sẵn.
+Dự án chỉ hướng dẫn chạy bằng Docker Compose. Không cần cài Python hoặc MySQL
+riêng trên máy host.
 
 --------------------------------------------------------------------------------
 1. CHỨC NĂNG CHÍNH
 --------------------------------------------------------------------------------
 - Đăng nhập bằng username và password.
 - Băm mật khẩu bằng bcrypt.
-- Phát hành và xác thực access token JWT.
+- Phát hành và xác thực JWT access token.
 - Lấy thông tin người dùng hiện tại.
 - Phân quyền theo role: student và admin.
-- Cung cấp API nội bộ để service khác lấy thông tin người dùng.
-- Giới hạn request đăng nhập và tạm khóa tài khoản sau nhiều lần nhập sai.
+- Cung cấp API nội bộ để service khác lấy thông tin liên hệ người dùng.
+- Giới hạn số request đăng nhập và tạm khóa tài khoản sau nhiều lần nhập sai.
 
 --------------------------------------------------------------------------------
 2. YÊU CẦU HỆ THỐNG
 --------------------------------------------------------------------------------
-Cách 1 - Docker Compose:
 - Docker Desktop đã được cài đặt và đang chạy.
-- Không cần cài Python hoặc MySQL riêng để chạy service trong container.
+- Docker Compose v2 (lệnh `docker compose`).
+- Git (nếu clone dự án từ GitHub).
 
-Cách 2 - Chạy trực tiếp:
-- Python 3.11 trở lên.
-- MySQL 8.0+ hoặc MySQL của XAMPP / Laragon.
-- phpMyAdmin, MySQL Workbench hoặc công cụ quản lý MySQL tương đương.
-
-Các lệnh ví dụ sử dụng Windows PowerShell.
+Không cần cài Python hoặc MySQL riêng trên Windows.
+Các lệnh bên dưới sử dụng Windows PowerShell.
 
 --------------------------------------------------------------------------------
 3. CẤU HÌNH FILE .env
 --------------------------------------------------------------------------------
-Tại thư mục gốc dự án, tạo file .env từ file mẫu:
+Bước 1: Mở terminal tại thư mục chứa `docker-compose.yml`.
+
+Bước 2: Tạo file .env từ file mẫu:
 
     Copy-Item .env.example .env
 
-Tạo hai secret khác nhau bằng cách chạy lệnh sau hai lần trong PowerShell:
+Bước 3: Tạo hai secret khác nhau bằng PowerShell. Chạy đoạn lệnh:
 
-    python -c "import secrets; print(secrets.token_hex(32))"
+    $bytes1 = New-Object byte[] 32
+    $bytes2 = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $rng.GetBytes($bytes1)
+    $rng.GetBytes($bytes2)
+    "JWT_SECRET_KEY=" + [System.BitConverter]::ToString($bytes1).Replace("-", "").ToLower()
+    "INTERNAL_API_KEY=" + [System.BitConverter]::ToString($bytes2).Replace("-", "").ToLower()
 
-Dán một giá trị vào JWT_SECRET_KEY và giá trị còn lại vào INTERNAL_API_KEY
-trong file .env. Không giữ nguyên giá trị CHANGE_ME trong file mẫu.
+Bước 4: Mở file .env và thay JWT_SECRET_KEY, INTERNAL_API_KEY bằng hai giá trị
+vừa tạo. Thay MYSQL_ROOT_PASSWORD bằng một mật khẩu dành cho MySQL trong Docker.
+Nên dùng mật khẩu gồm chữ và số để tránh vấn đề mã hóa ký tự trong connection URL.
+Không giữ nguyên các giá trị CHANGE_ME trong file mẫu.
 
-Các biến thường dùng:
-- JWT_SECRET_KEY: secret dùng ký JWT, tối thiểu 32 ký tự.
-- INTERNAL_API_KEY: key bảo vệ endpoint nội bộ, tối thiểu 32 ký tự.
-- MYSQL_ROOT_PASSWORD: mật khẩu root của MySQL do Docker Compose khởi chạy.
-- MYSQL_PORT: cổng MySQL được mở ra trên máy host, mặc định 3307.
-- AUTH_PORT: cổng API trên máy host, mặc định 8001.
-- DATABASE_URL: chuỗi kết nối MySQL khi chạy FastAPI trực tiếp trên máy.
+Các biến cấu hình:
+- JWT_SECRET_KEY: secret dùng để ký JWT, tối thiểu 32 ký tự.
+- INTERNAL_API_KEY: key xác thực request tới API nội bộ, tối thiểu 32 ký tự.
+- MYSQL_ROOT_PASSWORD: mật khẩu root của MySQL container.
+- MYSQL_PORT: cổng MySQL mở ra trên máy host, mặc định 3307.
+- AUTH_PORT: cổng User/Auth API trên máy host, mặc định 8001.
+- JWT_EXPIRE_MINUTES: thời gian JWT có hiệu lực, mặc định 30 phút.
 
-Lưu ý: Khi dùng Docker Compose, cấu hình DATABASE_URL trong container sẽ tự
-được đặt để kết nối tới hostname mysql bên trong mạng Docker; dòng DATABASE_URL
-trỏ tới localhost trong .env.example dành cho cách chạy trực tiếp.
-
-Không commit file .env lên GitHub. Chỉ commit file .env.example không chứa secret
-thật.
+Không commit file .env hoặc secret thật lên GitHub. Chỉ commit .env.example.
 
 --------------------------------------------------------------------------------
-4. 2 CÁCH CHẠY THỬ NGHIỆM USER SERVICE
+4. KHỞI CHẠY HỆ THỐNG BẰNG DOCKER COMPOSE
 --------------------------------------------------------------------------------
-*CÁCH 1 - CHẠY BẰNG DOCKER COMPOSE (KHUYÊN DÙNG ĐỂ THỬ NGHIỆM)*
+Bước 1: Đảm bảo Docker Desktop đang chạy.
 
-Docker Compose sẽ build User/Auth API, khởi động MySQL 8 và tạo bảng từ file
- db/user_db.sql khi volume database được khởi tạo lần đầu.
-
-Bước 1: Đảm bảo Docker Desktop đang chạy. Mở terminal tại thư mục chứa
-        docker-compose.yml.
-
-Bước 2: Khởi động MySQL và User/Auth Service:
+Bước 2: Tại thư mục chứa docker-compose.yml, khởi động API và MySQL:
 
     docker compose up -d --build
 
-Lệnh này yêu cầu JWT_SECRET_KEY và INTERNAL_API_KEY đã được thay bằng secret
-thật trong file .env.
+Docker Compose sẽ build User/Auth API, khởi chạy MySQL 8 và chờ database sẵn sàng.
+File `db/user_db.sql` tạo database và bảng `users` khi MySQL volume được tạo
+lần đầu.
 
-Bước 3: Tạo tài khoản demo bên trong container API:
+Bước 3: Tạo tài khoản demo:
 
     docker compose exec user-auth-service python seed.py
 
-Nếu terminal báo "Created demo account", tài khoản demo đã được tạo. Nếu báo
-"Skipped existing account", tài khoản đã tồn tại và mật khẩu không bị ghi đè.
+Tài khoản demo:
+- Student: username `demo`, password `Demo123!`
+- Admin: username `admin`, password `AdminDemo123!`
 
-Bước 4: Mở Swagger UI:
+Nếu hiện `Created demo account`, tài khoản mới đã được tạo. Nếu hiện
+`Skipped existing account`, tài khoản đã tồn tại; script không ghi đè mật khẩu.
+
+Bước 4: Mở tài liệu API:
 
     http://localhost:8001/docs
 
-Kiểm tra service:
+Health check:
 
     http://localhost:8001/health
 
-Một số lệnh quản lý:
+Các lệnh Docker thường dùng:
 
-    docker compose ps                 # Xem trạng thái container
-    docker compose logs -f             # Xem log các service
+    docker compose ps
+    docker compose logs -f
     docker compose logs -f user-auth-service
-    docker compose down                # Dừng và xóa container, giữ dữ liệu MySQL
+    docker compose down
 
-Dữ liệu MySQL được lưu trong named volume user_auth_mysql_data. Nếu muốn xóa
-hoàn toàn database Docker và dữ liệu trong đó, dùng lệnh sau:
+`docker compose down` dừng và xóa container nhưng giữ dữ liệu trong volume.
+
+CẢNH BÁO: Lệnh dưới đây xóa cả volume MySQL và toàn bộ dữ liệu trong database:
 
     docker compose down -v
 
-CẢNH BÁO: `docker compose down -v` sẽ xóa volume database của dự án. Chỉ dùng
-khi chấp nhận mất dữ liệu và muốn khởi tạo database từ đầu.
+Chỉ dùng lệnh này khi muốn xóa dữ liệu và khởi tạo database từ đầu. File
+`db/user_db.sql` chỉ được MySQL image tự nạp khi volume được tạo lần đầu.
+Nếu volume đã tồn tại, sửa file SQL rồi khởi động lại Compose sẽ không tự chạy
+lại script khởi tạo.
 
-File db/user_db.sql chỉ được MySQL image nạp tự động khi volume dữ liệu được tạo
-lần đầu. Nếu volume đã tồn tại, sửa file SQL rồi chạy lại compose sẽ không tự
-chạy lại script này.
+Nếu cổng 8001 hoặc 3307 đang được sử dụng, thay AUTH_PORT hoặc MYSQL_PORT trong
+file .env rồi chạy lại:
 
-Nếu cổng 8001 hoặc 3307 đang được sử dụng, đổi AUTH_PORT hoặc MYSQL_PORT trong
-.env rồi chạy lại `docker compose up -d`.
-
-*CÁCH 2 - CHẠY FASTAPI TRỰC TIẾP TRÊN MÁY*
-
-Cách này dùng MySQL đã cài trên Windows, XAMPP hoặc Laragon.
-
-Bước 1: Khởi động MySQL và import file db/user_db.sql bằng phpMyAdmin:
-- Mở http://localhost/phpmyadmin.
-- Chọn tab Import.
-- Chọn file db/user_db.sql rồi nhấn Import.
-
-Có thể import bằng MySQL CLI nếu đã cấu hình lệnh mysql:
-
-    mysql -u root -p < db/user_db.sql
-
-Bước 2: Trong file .env, đặt DATABASE_URL trỏ tới MySQL trên máy. Ví dụ cho
-        MySQL chạy cổng 3306 với user root không có mật khẩu:
-
-    DATABASE_URL=mysql+pymysql://root:@localhost:3306/user_db?charset=utf8mb4
-
-Nếu MySQL có mật khẩu hoặc dùng cổng khác, cập nhật chuỗi kết nối tương ứng.
-Không dùng MYSQL_ROOT_PASSWORD của Docker làm mật khẩu MySQL cài sẵn trừ khi
-bạn đã đặt hai mật khẩu đó giống nhau.
-
-Bước 3: Tạo môi trường ảo và cài thư viện:
-
-    python -m venv .venv
-    .venv\Scripts\Activate.ps1
-    pip install -r requirements.txt
-
-Nếu PowerShell chặn việc chạy script, có thể dùng Command Prompt:
-
-    .venv\Scripts\activate.bat
-
-Bước 4: Tạo tài khoản demo:
-
-    python seed.py
-
-Bước 5: Chạy API:
-
-    uvicorn app.main:app --reload --port 8001
-
-Mở Swagger UI tại http://127.0.0.1:8001/docs và health check tại
-http://127.0.0.1:8001/health.
+    docker compose up -d
 
 --------------------------------------------------------------------------------
-5. TÀI KHOẢN DEMO
---------------------------------------------------------------------------------
-Tài khoản sinh viên:
-    Username: student
-    Password: Admin123
-
-Tài khoản quản trị viên:
-    Username: admin
-    Password: Admin123
-
-Chạy `python seed.py` để tạo demo khi chạy trực tiếp, hoặc
-`docker compose exec user-auth-service python seed.py` khi chạy bằng Docker.
-Script chỉ tạo tài khoản nếu username chưa tồn tại; không đặt lại mật khẩu của
-tài khoản đã tồn tại.
-
-Đây là tài khoản dùng cho môi trường phát triển, không dùng cho production.
-
---------------------------------------------------------------------------------
-6. DANH SÁCH API ENDPOINTS
+5. DANH SÁCH API ENDPOINTS
 --------------------------------------------------------------------------------
 Authentication:
 - POST /api/v1/auth/login
-  Đăng nhập bằng username và password gửi dưới dạng form fields. Trả về JWT,
-  token_type và expires_in.
+  Nhận username và password dưới dạng application/x-www-form-urlencoded; trả về
+  JWT access token khi thông tin đăng nhập hợp lệ.
 
-User profile:
+User:
 - GET /api/v1/users/me
-  Yêu cầu access token JWT hợp lệ. Trả về thông tin tài khoản hiện tại.
-
-Admin:
-- GET /api/v1/admin/users
-  Chỉ role=admin được truy cập. Hỗ trợ limit (mặc định 50, tối đa 100) và
-offset (mặc định 0).
+  Yêu cầu JWT hợp lệ. Trả về hồ sơ tài khoản hiện đang đăng nhập.
 
 Internal API:
 - GET /internal/users/{user_id}
-  Yêu cầu header X-Internal-API-Key đúng. Dùng để service nội bộ, ví dụ Payment
-  Service, lấy thông tin người dùng được phép truy cập.
+  Yêu cầu header X-Internal-API-Key hợp lệ. Dành cho các service nội bộ, ví dụ
+  Payment Service, lấy họ tên, số điện thoại và email của người dùng.
+
+Administration:
+- GET /api/v1/admin/users
+  Yêu cầu JWT của tài khoản có role `admin`. Hỗ trợ limit (mặc định 50, tối đa
+  100) và offset (mặc định 0).
 
 Health:
 - GET /health
-  Kiểm tra nhanh service có phản hồi.
+  Kiểm tra service có phản hồi. Endpoint này không kiểm tra sâu kết nối MySQL.
+
+Đề án hiện không có API đăng ký tài khoản công khai. Tài khoản demo được tạo
+bằng script seed.py.
 
 --------------------------------------------------------------------------------
-7. KIỂM THỬ API BẰNG SWAGGER
+6. KIỂM THỬ API BẰNG SWAGGER
 --------------------------------------------------------------------------------
-Mở Swagger UI:
-- Khi chạy Docker: http://localhost:8001/docs
-- Khi chạy trực tiếp: http://127.0.0.1:8001/docs
+Mở Swagger UI tại:
+
+    http://localhost:8001/docs
 
 Đăng nhập:
 1. Mở POST /api/v1/auth/login.
 2. Nhấn Try it out.
-3. Nhập username và password vào các trường form.
-4. Nhấn Execute và kiểm tra Server response. Khi thành công phải là 200 và
-   response trả về access_token.
+3. Nhập username và password vào form.
+4. Nhấn Execute. Đăng nhập thành công trả về 200 và access_token.
 
-Kiểm tra API hồ sơ:
-1. Dùng Authorize trong Swagger theo hướng dẫn trên giao diện.
-2. Gọi GET /api/v1/users/me bằng access token hợp lệ.
+Kiểm tra hồ sơ:
+1. Nhấn Authorize trong Swagger và xác thực bằng tài khoản cần kiểm thử.
+2. Gọi GET /api/v1/users/me.
 
-Kiểm tra phân quyền:
-- Gọi GET /api/v1/admin/users với token admin: dự kiến 200.
-- Gọi endpoint này với token student: dự kiến 403.
-- Gọi endpoint cần xác thực mà không có token hợp lệ: dự kiến 401.
+Kiểm tra phân quyền admin:
+- Token admin gọi GET /api/v1/admin/users: dự kiến 200.
+- Token student gọi GET /api/v1/admin/users: dự kiến 403.
+- Không có token hợp lệ: dự kiến 401.
 
 Kiểm tra API nội bộ:
-- Mở GET /internal/users/{user_id}.
-- Nhập user_id tồn tại.
-- Gửi header X-Internal-API-Key đúng với INTERNAL_API_KEY trong .env.
+- Gọi GET /internal/users/{user_id} với user_id tồn tại.
+- Gửi header X-Internal-API-Key có giá trị bằng INTERNAL_API_KEY trong .env.
+- API key thiếu hoặc sai trả về 401.
 
-Mục 422 Validation Error trong phần Responses của Swagger chỉ mô tả một phản
-hồi có thể xảy ra. Để biết request có thực sự lỗi hay không, hãy đọc mã HTTP
-trong mục Server response sau khi nhấn Execute.
+Mục `422 Validation Error` trong phần Responses của Swagger chỉ mô tả một phản
+hồi có thể xảy ra. Xem mã HTTP trong `Server response` sau khi nhấn Execute để
+biết request thực tế có thành công hay không.
 
 --------------------------------------------------------------------------------
-8. CƠ CHẾ BẢO MẬT
+7. CƠ CHẾ BẢO MẬT
 --------------------------------------------------------------------------------
 - Mật khẩu được băm bằng bcrypt.
-- JWT dùng HS256 và được kiểm tra chữ ký, hạn dùng, issuer, audience và claim.
-- API yêu cầu xác thực sẽ kiểm tra trạng thái tài khoản trong MySQL.
+- JWT sử dụng HS256; server kiểm tra chữ ký, thời hạn, issuer, audience và claim.
+- Các API được bảo vệ kiểm tra trạng thái tài khoản trong MySQL.
 - Endpoint quản trị yêu cầu role=admin.
 - Endpoint nội bộ yêu cầu X-Internal-API-Key.
 - Giới hạn tối đa 10 request đăng nhập mỗi phút theo địa chỉ IP.
-- Sau 5 lần nhập sai liên tiếp, tài khoản bị khóa trong 15 phút.
+- Sau 5 lần nhập sai liên tiếp, tài khoản bị khóa tạm thời trong 15 phút.
+- Không công khai endpoint /internal/* qua API Gateway.
 
 --------------------------------------------------------------------------------
-9. MÃ TRẠNG THÁI HTTP 
+8. MÃ TRẠNG THÁI HTTP
 --------------------------------------------------------------------------------
 200 OK                  Request thành công.
-401 Unauthorized        Đăng nhập sai, JWT không hợp lệ/hết hạn hoặc API key sai.
+401 Unauthorized        Sai thông tin đăng nhập, JWT không hợp lệ/hết hạn hoặc
+                        Internal API Key sai/thiếu.
 403 Forbidden           Đã xác thực nhưng không đủ quyền, ví dụ student gọi API admin.
-404 Not Found           Không tìm thấy người dùng được yêu cầu.
-422 Validation Error    Thiếu trường hoặc dữ liệu request sai định dạng.
+404 Not Found           Không tìm thấy user hoặc user không hoạt động.
+422 Validation Error    Thiếu trường hoặc dữ liệu đầu vào sai định dạng.
 429 Too Many Requests   Đã vượt giới hạn request đăng nhập.
 
 --------------------------------------------------------------------------------
-10. XỬ LÝ LỖI THƯỜNG GẶP
+9. XỬ LÝ LỖI THƯỜNG GẶP
 --------------------------------------------------------------------------------
 [Docker không khởi động]
 - Kiểm tra Docker Desktop đang chạy.
 - Chạy `docker compose ps` và `docker compose logs -f` để xem lỗi.
-- Kiểm tra JWT_SECRET_KEY và INTERNAL_API_KEY trong .env không còn giá trị mẫu.
+- Kiểm tra JWT_SECRET_KEY và INTERNAL_API_KEY trong .env đã được thay bằng
+  secret thật, không còn giá trị CHANGE_ME.
 
 [Không kết nối được MySQL]
-- Khi chạy Docker, service API phải dùng hostname `mysql` trong DATABASE_URL;
-  không dùng localhost bên trong container để kết nối MySQL container khác.
-- Khi chạy trực tiếp, kiểm tra host, port, username, password và database URL.
-- Khi Docker volume đã cũ, SQL init sẽ không tự chạy lại. Chỉ dùng
-  `docker compose down -v` nếu chấp nhận xóa dữ liệu rồi khởi tạo lại từ đầu.
+- Kiểm tra `docker compose ps` để xác nhận container mysql đang chạy.
+- Xem log bằng `docker compose logs -f mysql`.
+- API trong container phải kết nối tới hostname `mysql`, không phải localhost.
+- Nếu volume đã tồn tại, SQL init sẽ không tự chạy lại. Chỉ dùng
+  `docker compose down -v` nếu chấp nhận xóa dữ liệu để tạo database mới.
 
 [Đăng nhập trả về 401]
-- Kiểm tra username và password.
-- Chạy seed.py bằng cách tương ứng với phương thức đang dùng để tạo tài khoản demo.
-- Nếu tài khoản đã tồn tại, seed.py không ghi đè mật khẩu.
+- Kiểm tra username và password demo.
+- Chạy `docker compose exec user-auth-service python seed.py`.
+- Nếu tài khoản đã tồn tại, seed.py không đặt lại mật khẩu.
 - Kiểm tra tài khoản có đang bị khóa tạm thời hay không.
 
 [API admin trả về 403]
-- Chỉ token thuộc tài khoản có role=admin mới được truy cập.
+- Chỉ token của tài khoản có role=admin mới được truy cập endpoint này.
 
 [API nội bộ trả về 401]
-- Kiểm tra header X-Internal-API-Key khớp với INTERNAL_API_KEY đang được service dùng.
+- Kiểm tra header X-Internal-API-Key khớp với INTERNAL_API_KEY mà container đang dùng.
+- Nếu vừa sửa .env, chạy lại `docker compose up -d --force-recreate user-auth-service`.
 
 [API trả về 422]
-- Đọc Server response và trường detail trong Response body sau khi Execute.
+- Xem `Server response` và trường `detail` trong Response body sau khi Execute.
 
 --------------------------------------------------------------------------------
-11. CẤU TRÚC THƯ MỤC DỰ ÁN
+10. CẤU TRÚC THƯ MỤC DỰ ÁN
 --------------------------------------------------------------------------------
-UserAuthService_security_update/
+UserAuthService/
 |-- app/
-|   |-- api/                 # Authentication, user profile, admin
-|   |-- core/                # JWT, RBAC, API key và rate limiting
-|   |-- models/              # SQLAlchemy models
-|   |-- schemas/              # Request/response schemas
-|   |-- config.py             # Cấu hình đọc từ biến môi trường hoặc .env
+|   |-- core/                 # JWT, API key, phân quyền và rate limiting
+|   |-- models/               # SQLAlchemy model bảng users
+|   |-- schemas/              # Schema response của API
+|   |-- config.py             # Cấu hình từ environment
 |   |-- database.py           # Kết nối MySQL và session
-|   `-- main.py               # Khởi tạo FastAPI
+|   `-- main.py               # Khai báo các API
 |-- db/
-|   `-- user_db.sql           # Tạo database, bảng users
-|-- tests/                    # Unit tests bảo mật
-|-- Dockerfile                # Đóng gói FastAPI service
+|   `-- user_db.sql           # Tạo database và bảng users
+|-- tests/                    # Unit test bảo mật
+|-- Dockerfile                # Đóng gói FastAPI
 |-- docker-compose.yml        # Chạy API cùng MySQL
 |-- .dockerignore             # Loại file không cần khi build image
-|-- .env.example              # Cấu hình mẫu
-|-- requirements.txt          # Python dependencies
+|-- .env.example              # Cấu hình mẫu cho Docker
+|-- requirements.txt          # Thư viện Python được cài trong container
 |-- seed.py                   # Tạo tài khoản demo
 |-- UserAuthService.http      # Request mẫu
-`-- README.md                  # Tài liệu hướng dẫn
+`-- README.md                 # Tài liệu hướng dẫn
 
 --------------------------------------------------------------------------------
-12. LƯU Ý TRIỂN KHAI
+11. LƯU Ý
 --------------------------------------------------------------------------------
-- Thay các secret mẫu trước khi chạy.
-- Không commit .env hoặc thông tin đăng nhập thực lên GitHub.
-- Không công khai endpoint /internal/* qua API Gateway.
-- Không dùng tài khoản demo trong production.
-- Khi triển khai thực tế, cần cấu hình TLS, giới hạn mạng, quản lý secret và
-  giám sát log phù hợp.
-- Rate limit theo IP hiện dùng bộ nhớ trong process; nhiều worker hoặc nhiều
-  replica cần cơ chế giới hạn dùng chung.
-- Service hiện chưa có refresh token, thu hồi JWT khi logout, MFA hoặc audit log.
-
+- Thay secret mẫu trước khi chạy; không commit .env lên GitHub.
+- Không dùng tài khoản demo trong môi trường production.
+- Sử dụng HTTPS và quản lý secret đúng cách khi triển khai thực tế.
+- Rate limit theo IP hiện dùng bộ nhớ trong process; nhiều replica cần cơ chế
+  giới hạn dùng chung.
+- Service hiện chưa có refresh token, logout/thu hồi JWT, MFA hoặc audit log.
+================================================================================
