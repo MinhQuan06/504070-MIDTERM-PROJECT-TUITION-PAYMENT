@@ -79,8 +79,8 @@ services:
       - "1025:1025"
       - "8025:8025"
 
-  fontend:
-    build: ./fontend
+  frontend:
+    build: ./frontend
     init: true
     restart: unless-stopped
     healthcheck:
@@ -97,7 +97,7 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      fontend:
+      frontend:
         condition: service_healthy
       payment-service:
         condition: service_healthy
